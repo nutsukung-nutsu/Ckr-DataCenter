@@ -189,36 +189,42 @@ function thaiFiscalYear(dateValue) {
 }
 function openAssetModal() {
   const modal = document.createElement('div'); modal.className = 'modal-backdrop';
+  const fieldLabel = (name, text, tone = 'teal') => '<label class="field-label"><span class="field-icon ' + tone + '">' + icon(name, 14) + '</span>' + text + '</label>';
   const categories = assetCategories.map(item => '<option>' + escapeHtml(item) + '</option>').join('');
   const statuses = statusMetrics.map(item => '<option>' + escapeHtml(item.name) + '</option>').join('');
   modal.innerHTML = '<section class="asset-modal"><div class="modal-head"><div><span class="section-kicker">ASSET REGISTRY</span><h2>เพิ่มครุภัณฑ์ใหม่</h2></div><button class="icon-button" id="close-modal">' + icon('x', 19) + '</button></div>' +
     '<form id="asset-form"><div class="form-grid">' +
-    '<div class="field"><label>เลขครุภัณฑ์</label><input name="asset_code" placeholder="เช่น IT-2569-001" /></div>' +
-    '<div class="field"><label>ชื่อผลิตภัณฑ์</label><input name="name" placeholder="ชื่อผลิตภัณฑ์" /></div>' +
-    '<div class="field"><label>ประเภท</label><select name="category">' + categories + '</select></div>' +
-    '<div class="field"><label>วันที่ได้รับ</label><input name="received_date" type="date" /></div>' +
-    '<div class="field"><label>ปีงบประมาณ</label><input name="fiscal_year" type="number" min="2500" max="3000" placeholder="เช่น 2569" /></div>' +
-    '<div class="field"><label>สถานที่</label><input name="location" placeholder="เช่น ห้องปฏิบัติการ" /></div>' +
-    '<div class="field"><label>หน่วยงาน</label><input name="department" placeholder="หน่วยงานที่รับผิดชอบ" /></div>' +
-    '<div class="field"><label>ชั้น</label><input name="floor" placeholder="เช่น ชั้น 2" /></div>' +
-    '<div class="field"><label>อาคาร</label><input name="building" placeholder="เช่น อาคาร 1" /></div>' +
-    '<div class="field"><label>ผู้รับผิดชอบ</label><input name="assignee" placeholder="ชื่อผู้รับผิดชอบ" /></div>' +
-    '<div class="field"><label>สถานะ</label><select name="status">' + statuses + '</select></div>' +
-    '<div class="field image-field"><label>ภาพอุปกรณ์</label><input id="asset-image" type="file" accept="image/jpeg,image/png,image/webp" /><div id="asset-image-preview" class="asset-image-preview"><span>เลือกรูป JPG, PNG หรือ WebP ขนาดไม่เกิน 10 MB</span></div><small>จัดเก็บแยกโฟลเดอร์ตามประเภท และตั้งชื่อด้วยเลขครุภัณฑ์กับผลิตภัณฑ์</small></div>' +
+    '<div class="field">' + fieldLabel('barcode', 'เลขครุภัณฑ์', 'blue') + '<input name="asset_code" placeholder="เช่น 7440-001-001/1" /></div>' +
+    '<div class="field">' + fieldLabel('package', 'ชื่อผลิตภัณฑ์', 'violet') + '<input name="name" placeholder="ชื่อผลิตภัณฑ์" /></div>' +
+    '<div class="field">' + fieldLabel('tags', 'ประเภท', 'amber') + '<select name="category">' + categories + '</select></div>' +
+    '<div class="field">' + fieldLabel('calendar-days', 'วันที่ได้รับ', 'blue') + '<input name="received_date" type="date" /></div>' +
+    '<div class="field">' + fieldLabel('calendar-range', 'ปีงบประมาณ', 'violet') + '<input name="fiscal_year" type="number" min="2500" max="3000" placeholder="เช่น 2569" /></div>' +
+    '<div class="field">' + fieldLabel('map-pin', 'สถานที่', 'mint') + '<input name="location" placeholder="เช่น ห้องปฏิบัติการ" /></div>' +
+    '<div class="field">' + fieldLabel('landmark', 'หน่วยงาน', 'teal') + '<input name="department" placeholder="หน่วยงานที่รับผิดชอบ" /></div>' +
+    '<div class="field">' + fieldLabel('layers', 'ชั้น', 'blue') + '<input name="floor" placeholder="เช่น ชั้น 2" /></div>' +
+    '<div class="field">' + fieldLabel('building', 'อาคาร', 'amber') + '<input name="building" placeholder="เช่น อาคาร 1" /></div>' +
+    '<div class="field">' + fieldLabel('user-round', 'ผู้รับผิดชอบ', 'violet') + '<input name="assignee" placeholder="ชื่อผู้รับผิดชอบ" /></div>' +
+    '<div class="field">' + fieldLabel('shield-check', 'สถานะ', 'mint') + '<select name="status">' + statuses + '</select></div>' +
+    '<div class="field image-field">' + fieldLabel('image', 'ภาพอุปกรณ์', 'teal') + '<div class="image-actions"><button type="button" class="image-action image-action-camera" id="take-asset-photo">' + icon('camera', 16) + ' ถ่ายรูปใหม่</button><button type="button" class="image-action" id="choose-asset-image">' + icon('images', 16) + ' เลือกจากเครื่อง</button></div><input id="asset-image" type="file" accept="image/jpeg,image/png,image/webp" hidden /><input id="asset-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden /><div id="asset-image-preview" class="asset-image-preview" tabindex="0"><span>' + icon('clipboard', 15) + ' วางรูปภาพด้วย Ctrl+V หรือเลือกรูป JPG, PNG, WebP ไม่เกิน 10 MB</span></div><small>จัดเก็บแยกโฟลเดอร์ตามประเภท และตั้งชื่อด้วยเลขครุภัณฑ์กับผลิตภัณฑ์</small></div>' +
     '</div><details class="optional-asset-details"><summary>ข้อมูลเพิ่มเติม</summary><div class="form-grid">' +
-    '<div class="field"><label>ยี่ห้อ / รุ่น</label><input name="brand" placeholder="ระบุยี่ห้อและรุ่น" /></div>' +
-    '<div class="field"><label>หมายเลขเครื่อง (S/N)</label><input name="serial_number" placeholder="Serial number" /></div>' +
-    '<div class="field"><label>ราคาจัดซื้อ (บาท)</label><input name="price" type="number" min="0" step="0.01" placeholder="0.00" /></div>' +
+    '<div class="field">' + fieldLabel('tag', 'ยี่ห้อ / รุ่น', 'blue') + '<input name="brand" placeholder="ระบุยี่ห้อและรุ่น" /></div>' +
+    '<div class="field">' + fieldLabel('hard-drive', 'หมายเลขเครื่อง (S/N)', 'teal') + '<input name="serial_number" placeholder="Serial number" /></div>' +
+    '<div class="field">' + fieldLabel('banknote', 'ราคาจัดซื้อ (บาท)', 'amber') + '<input name="price" type="number" min="0" step="0.01" placeholder="0.00" /></div>' +
     '</div></details><div class="modal-actions"><button type="button" class="button secondary" id="cancel-modal">ยกเลิก</button><button type="submit" class="button primary" id="save-asset">' + icon('plus', 16) + ' บันทึกครุภัณฑ์</button></div></form></section>';
   document.body.append(modal); renderIcons();
-  const form = modal.querySelector('#asset-form'), imageInput = modal.querySelector('#asset-image');
+  const form = modal.querySelector('#asset-form'), imageInput = modal.querySelector('#asset-image'), cameraInput = modal.querySelector('#asset-camera');
   const preview = modal.querySelector('#asset-image-preview'), saveButton = modal.querySelector('#save-asset');
-  imageInput.addEventListener('change', () => {
-    const file = imageInput.files?.[0];
-    if (!file) { preview.innerHTML = '<span>เลือกรูป JPG, PNG หรือ WebP ขนาดไม่เกิน 10 MB</span>'; return; }
-    if (!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) { imageInput.value = ''; preview.innerHTML = '<span>ไฟล์ไม่ถูกต้อง หรือมีขนาดเกิน 10 MB</span>'; return; }
+  const chooseImage = modal.querySelector('#choose-asset-image'), takePhoto = modal.querySelector('#take-asset-photo');
+  chooseImage.onclick = () => imageInput.click(); takePhoto.onclick = () => cameraInput.click();
+  const setImage = file => {
+    if (!file) return;
+    if (!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) { imageInput.value = ''; cameraInput.value = ''; preview.innerHTML = '<span>ไฟล์ไม่ถูกต้อง หรือมีขนาดเกิน 10 MB</span>'; return; }
+    const transfer = new DataTransfer(); transfer.items.add(file); imageInput.files = transfer.files;
     const reader = new FileReader(); reader.onload = () => { preview.innerHTML = '<img alt="ตัวอย่างภาพครุภัณฑ์" src="' + reader.result + '" />'; }; reader.readAsDataURL(file);
-  });
+  };
+  imageInput.addEventListener('change', () => setImage(imageInput.files?.[0]));
+  cameraInput.addEventListener('change', () => setImage(cameraInput.files?.[0]));
+  modal.addEventListener('paste', event => { const imageItem = Array.from(event.clipboardData?.items || []).find(item => item.type.startsWith('image/')); const file = imageItem?.getAsFile(); if (file) { event.preventDefault(); setImage(file); } });
   form.elements.received_date.addEventListener('change', () => { form.elements.fiscal_year.value = thaiFiscalYear(form.elements.received_date.value); });
   const close = () => modal.remove(); modal.querySelector('#close-modal').onclick = close; modal.querySelector('#cancel-modal').onclick = close;
   modal.onclick = event => { if (event.target === modal) close(); };
