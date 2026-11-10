@@ -1,4 +1,4 @@
--- BCJR IT Asset Registry: run this in Supabase SQL Editor.
+-- BCN CKR IT Asset Registry: run this in Supabase SQL Editor.
 create extension if not exists pgcrypto;
 
 create table if not exists public.it_assets (
