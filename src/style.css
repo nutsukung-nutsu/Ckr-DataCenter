@@ -26,3 +26,4 @@
 @media(max-width:760px){.login-shell.login-centered{padding:18px 14px}.login-centered .login-card{padding:24px 22px 20px;border-radius:20px}.login-emblem-ring{width:116px;height:116px}.login-school-name{font-size:12px}.login-centered .login-heading h2{font-size:23px}}
 
 .login-centered .mobile-brand{display:none!important}
+.login-shell.login-centered{grid-template-columns:1fr}
