@@ -94,17 +94,19 @@ const statusMetrics = [
 function statusCount(metric) { return assets.filter(asset => metric.matches.includes(asset.status)).length; }
 function categoryCount(name) { return assets.filter(asset => asset.category === name).length; }
 function fiscalYear(asset) {
-  if (!asset.purchase_date) return null;
-  const date = new Date(`${asset.purchase_date}T00:00:00`);
+  if (Number(asset.fiscal_year)) return Number(asset.fiscal_year);
+  const received = asset.received_date || asset.purchase_date;
+  if (!received) return null;
+  const date = new Date(`${received}T00:00:00`);
   if (Number.isNaN(date.getTime())) return null;
-  return date.getFullYear() + (date.getMonth() >= 9 ? 1 : 0);
+  return date.getFullYear() + 543 + (date.getMonth() >= 9 ? 1 : 0);
 }
 function fiscalYearSummary() {
   const counts = new Map();
   assets.forEach(asset => { const year = fiscalYear(asset); if (year) counts.set(year, (counts.get(year) || 0) + 1); });
   if (!counts.size) return [];
   const last = Math.max(...counts.keys());
-  return Array.from({ length: 5 }, (_, index) => last - 4 + index).map(year => ({ year, label: `ปีงบประมาณ ${year + 543}`, count: counts.get(year) || 0 }));
+  return Array.from({ length: 5 }, (_, index) => last - 4 + index).map(year => ({ year, label: `ปีงบประมาณ ${year}`, count: counts.get(year) || 0 }));
 }
 function buildingName(location) {
   const value = String(location || '').trim();
@@ -114,7 +116,7 @@ function buildingName(location) {
 }
 function buildingSummary() {
   const counts = new Map();
-  assets.forEach(asset => { const name = buildingName(asset.location); counts.set(name, (counts.get(name) || 0) + 1); });
+  assets.forEach(asset => { const name = asset.building?.trim() || buildingName(asset.location); counts.set(name, (counts.get(name) || 0) + 1); });
   return [...counts].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count).slice(0, 6);
 }
 function renderDashboardCharts() {
@@ -157,24 +159,94 @@ function renderContent() {
   document.querySelector('#status-filter').addEventListener('change', e => { statusFilter = e.target.value; updateRows(); });
   document.querySelector('#refresh-button').addEventListener('click', async () => { await loadAssets(); renderContent(); toast('อัปเดตข้อมูลแล้ว'); });
   document.querySelector('#asset-rows').addEventListener('click', e => { const button = e.target.closest('[data-delete]'); if (button) deleteAsset(button.dataset.delete); });
-  renderIcons();
+  renderIcons(); loadAssetThumbnails();
 }
 
 function categorySummary() { return assetCategories.map(name => ({ name, count: categoryCount(name) })); }
 function filteredAssets() { return assets.filter(a => (!searchTerm || `${a.asset_code} ${a.name} ${a.brand} ${a.serial_number}`.toLowerCase().includes(searchTerm.toLowerCase())) && (categoryFilter === 'ทั้งหมด' || a.category === categoryFilter) && (statusFilter === 'ทั้งหมด' || a.status === statusFilter)); }
-function tableRows() { const rows = filteredAssets().slice(0, view === 'dashboard' ? 5 : 100); if (!rows.length) return `<tr><td colspan="7"><div class="table-empty">${icon('search-x', 21)}<span>ไม่พบรายการที่ตรงกับการค้นหา</span></div></td></tr>`; return rows.map(a => `<tr><td><div class="asset-name-cell"><div class="asset-type-icon ${categoryIcon(a.category) === 'monitor' ? 'icon-purple' : categoryIcon(a.category) === 'router' ? 'icon-blue' : 'icon-orange'}">${icon(categoryIcon(a.category), 17)}</div><div><strong>${escapeHtml(a.name)}</strong><span>${escapeHtml(a.asset_code)} <i>·</i> ${escapeHtml(a.brand || 'ไม่ระบุยี่ห้อ')}</span></div></div></td><td><span class="category-chip">${escapeHtml(a.category)}</span></td><td><span class="location-cell">${icon('map-pin', 13)} ${escapeHtml(a.location || '—')}</span></td><td><span class="owner-cell"><span class="owner-avatar">${escapeHtml((a.assignee || a.department || 'IT')[0])}</span>${escapeHtml(a.assignee || a.department || 'งาน IT')}</span></td><td><span class="status-pill ${statusClass(a.status)}"><i></i>${escapeHtml(a.status)}</span></td><td class="price-cell">${money(a.price)}</td><td>${userRole === 'super_admin' || !supabase ? `<button class="row-more" data-delete="${escapeHtml(a.id)}" title="ลบรายการ">${icon('ellipsis', 17)}</button>` : ''}</td></tr>`).join(''); }
-function updateRows() { document.querySelector('#asset-rows').innerHTML = tableRows(); document.querySelector('#row-count').textContent = filteredAssets().length; renderIcons(); }
 
-function openAssetModal() {
-  const modal = document.createElement('div'); modal.className = 'modal-backdrop'; modal.innerHTML = `<section class="asset-modal"><div class="modal-head"><div><span class="section-kicker">ASSET REGISTRY</span><h2>เพิ่มครุภัณฑ์ใหม่</h2></div><button class="icon-button" id="close-modal">${icon('x', 19)}</button></div><form id="asset-form"><div class="form-grid"><div class="field"><label>รหัสครุภัณฑ์ <span>*</span></label><input name="asset_code" placeholder="เช่น IT-2569-001" required /></div><div class="field"><label>ชื่อครุภัณฑ์ <span>*</span></label><input name="name" placeholder="ชื่อรายการครุภัณฑ์" required /></div><div class="field"><label>หมวดหมู่</label><select name="category">${assetCategories.map(category => `<option>${category}</option>`).join('')}</select></div><div class="field"><label>ยี่ห้อ / รุ่น</label><input name="brand" placeholder="ระบุยี่ห้อและรุ่น" /></div><div class="field"><label>หมายเลขเครื่อง (S/N)</label><input name="serial_number" placeholder="Serial number" /></div><div class="field"><label>วันที่จัดซื้อ</label><input name="purchase_date" type="date" /></div><div class="field"><label>สถานที่จัดเก็บ</label><input name="location" placeholder="อาคาร / ห้อง" /></div><div class="field"><label>หน่วยงาน / ผู้รับผิดชอบ</label><input name="department" placeholder="หน่วยงานที่รับผิดชอบ" /></div><div class="field"><label>ราคาจัดซื้อ (บาท)</label><input name="price" type="number" min="0" step="0.01" placeholder="0.00" /></div><div class="field"><label>สถานะ</label><select name="status">${statusMetrics.map(metric => `<option>${metric.name}</option>`).join('')}</select></div></div><div class="modal-actions"><button type="button" class="button secondary" id="cancel-modal">ยกเลิก</button><button type="submit" class="button primary">${icon('plus', 16)} บันทึกครุภัณฑ์</button></div></form></section>`;
-  document.body.append(modal); renderIcons();
-  const close = () => modal.remove(); modal.querySelector('#close-modal').onclick = close; modal.querySelector('#cancel-modal').onclick = close; modal.onclick = e => { if (e.target === modal) close(); };
-  modal.querySelector('#asset-form').onsubmit = async e => { e.preventDefault(); const record = Object.fromEntries(new FormData(e.target)); record.price = Number(record.price) || 0; record.status ||= 'ใช้งานปกติ'; if (supabase && session?.user) { const { data, error } = await supabase.from('it_assets').insert({ ...record, created_by: session.user.id }).select().single(); if (error) return toast(`บันทึกไม่สำเร็จ: ${error.message}`, true); assets.unshift(data); } else assets.unshift({ ...record, id: `local-${Date.now()}` }); close(); renderContent(); renderIcons(); toast('เพิ่มครุภัณฑ์เรียบร้อย'); };
+async function loadAssetThumbnails() {
+  if (!supabase) return;
+  const images = [...document.querySelectorAll('.asset-thumb[data-image-path]')];
+  await Promise.all(images.map(async image => {
+    const { data, error } = await supabase.storage.from('it-asset-images').createSignedUrl(image.dataset.imagePath, 1800);
+    if (!error && data?.signedUrl && image.isConnected) image.src = data.signedUrl;
+  }));
 }
 
+function tableRows() { const rows = filteredAssets().slice(0, view === 'dashboard' ? 5 : 100); if (!rows.length) return `<tr><td colspan="7"><div class="table-empty">${icon('search-x', 21)}<span>ไม่พบรายการที่ตรงกับการค้นหา</span></div></td></tr>`; return rows.map(a => `<tr><td><div class="asset-name-cell"><div class="asset-type-icon ${categoryIcon(a.category) === 'monitor' ? 'icon-purple' : categoryIcon(a.category) === 'router' ? 'icon-blue' : 'icon-orange'}">${a.image_path ? `<img class="asset-thumb" data-image-path="${escapeHtml(a.image_path)}" alt="${escapeHtml(a.name)}" />` : icon(categoryIcon(a.category), 17)}</div><div><strong>${escapeHtml(a.name)}</strong><span>${escapeHtml(a.asset_code)} <i>·</i> ${escapeHtml(a.brand || 'ไม่ระบุยี่ห้อ')}</span></div></div></td><td><span class="category-chip">${escapeHtml(a.category)}</span></td><td><span class="location-cell">${icon('map-pin', 13)} ${escapeHtml([a.building, a.floor, a.location].filter(Boolean).join(' · ') || '—')}</span></td><td><span class="owner-cell"><span class="owner-avatar">${escapeHtml((a.assignee || a.department || 'IT')[0])}</span>${escapeHtml(a.assignee || a.department || 'งาน IT')}</span></td><td><span class="status-pill ${statusClass(a.status)}"><i></i>${escapeHtml(a.status)}</span></td><td class="price-cell">${money(a.price)}</td><td>${userRole === 'super_admin' || !supabase ? `<button class="row-more" data-delete="${escapeHtml(a.id)}" title="ลบรายการ">${icon('ellipsis', 17)}</button>` : ''}</td></tr>`).join(''); }
+function updateRows() { document.querySelector('#asset-rows').innerHTML = tableRows(); document.querySelector('#row-count').textContent = filteredAssets().length; renderIcons(); loadAssetThumbnails(); }
+
+function cleanPathPart(value) { return String(value || '').normalize('NFKC').trim().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').slice(0, 90) || 'item'; }
+function thaiFiscalYear(dateValue) {
+  if (!dateValue) return '';
+  const date = new Date(dateValue + 'T00:00:00');
+  return Number.isNaN(date.getTime()) ? '' : date.getFullYear() + 543 + (date.getMonth() >= 9 ? 1 : 0);
+}
+function openAssetModal() {
+  const modal = document.createElement('div'); modal.className = 'modal-backdrop';
+  const categories = assetCategories.map(item => '<option>' + escapeHtml(item) + '</option>').join('');
+  const statuses = statusMetrics.map(item => '<option>' + escapeHtml(item.name) + '</option>').join('');
+  modal.innerHTML = '<section class="asset-modal"><div class="modal-head"><div><span class="section-kicker">ASSET REGISTRY</span><h2>เพิ่มครุภัณฑ์ใหม่</h2></div><button class="icon-button" id="close-modal">' + icon('x', 19) + '</button></div>' +
+    '<form id="asset-form"><div class="form-grid">' +
+    '<div class="field"><label>เลขครุภัณฑ์ <span>*</span></label><input name="asset_code" placeholder="เช่น IT-2569-001" required /></div>' +
+    '<div class="field"><label>ชื่อผลิตภัณฑ์ <span>*</span></label><input name="name" placeholder="ชื่อผลิตภัณฑ์" required /></div>' +
+    '<div class="field"><label>ประเภท <span>*</span></label><select name="category" required>' + categories + '</select></div>' +
+    '<div class="field"><label>วันที่ได้รับ <span>*</span></label><input name="received_date" type="date" required /></div>' +
+    '<div class="field"><label>ปีงบประมาณ <span>*</span></label><input name="fiscal_year" type="number" min="2500" max="3000" placeholder="เช่น 2569" required /></div>' +
+    '<div class="field"><label>สถานที่ <span>*</span></label><input name="location" placeholder="เช่น ห้องปฏิบัติการ" required /></div>' +
+    '<div class="field"><label>หน่วยงาน <span>*</span></label><input name="department" placeholder="หน่วยงานที่รับผิดชอบ" required /></div>' +
+    '<div class="field"><label>ชั้น <span>*</span></label><input name="floor" placeholder="เช่น ชั้น 2" required /></div>' +
+    '<div class="field"><label>อาคาร <span>*</span></label><input name="building" placeholder="เช่น อาคาร 1" required /></div>' +
+    '<div class="field"><label>ผู้รับผิดชอบ <span>*</span></label><input name="assignee" placeholder="ชื่อผู้รับผิดชอบ" required /></div>' +
+    '<div class="field"><label>สถานะ <span>*</span></label><select name="status" required>' + statuses + '</select></div>' +
+    '<div class="field image-field"><label>ภาพอุปกรณ์</label><input id="asset-image" type="file" accept="image/jpeg,image/png,image/webp" /><div id="asset-image-preview" class="asset-image-preview"><span>เลือกรูป JPG, PNG หรือ WebP ขนาดไม่เกิน 10 MB</span></div><small>จัดเก็บแยกโฟลเดอร์ตามประเภท และตั้งชื่อด้วยเลขครุภัณฑ์กับผลิตภัณฑ์</small></div>' +
+    '</div><details class="optional-asset-details"><summary>ข้อมูลเพิ่มเติม</summary><div class="form-grid">' +
+    '<div class="field"><label>ยี่ห้อ / รุ่น</label><input name="brand" placeholder="ระบุยี่ห้อและรุ่น" /></div>' +
+    '<div class="field"><label>หมายเลขเครื่อง (S/N)</label><input name="serial_number" placeholder="Serial number" /></div>' +
+    '<div class="field"><label>ราคาจัดซื้อ (บาท)</label><input name="price" type="number" min="0" step="0.01" placeholder="0.00" /></div>' +
+    '</div></details><div class="modal-actions"><button type="button" class="button secondary" id="cancel-modal">ยกเลิก</button><button type="submit" class="button primary" id="save-asset">' + icon('plus', 16) + ' บันทึกครุภัณฑ์</button></div></form></section>';
+  document.body.append(modal); renderIcons();
+  const form = modal.querySelector('#asset-form'), imageInput = modal.querySelector('#asset-image');
+  const preview = modal.querySelector('#asset-image-preview'), saveButton = modal.querySelector('#save-asset');
+  imageInput.addEventListener('change', () => {
+    const file = imageInput.files?.[0];
+    if (!file) { preview.innerHTML = '<span>เลือกรูป JPG, PNG หรือ WebP ขนาดไม่เกิน 10 MB</span>'; return; }
+    if (!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) { imageInput.value = ''; preview.innerHTML = '<span>ไฟล์ไม่ถูกต้อง หรือมีขนาดเกิน 10 MB</span>'; return; }
+    const reader = new FileReader(); reader.onload = () => { preview.innerHTML = '<img alt="ตัวอย่างภาพครุภัณฑ์" src="' + reader.result + '" />'; }; reader.readAsDataURL(file);
+  });
+  form.elements.received_date.addEventListener('change', () => { form.elements.fiscal_year.value = thaiFiscalYear(form.elements.received_date.value); });
+  const close = () => modal.remove(); modal.querySelector('#close-modal').onclick = close; modal.querySelector('#cancel-modal').onclick = close;
+  modal.onclick = event => { if (event.target === modal) close(); };
+  form.onsubmit = async event => {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(form)), file = imageInput.files?.[0] || null;
+    const record = { asset_code: String(values.asset_code).trim(), name: String(values.name).trim(), category: values.category,
+      received_date: values.received_date || null, purchase_date: values.received_date || null, fiscal_year: Number(values.fiscal_year) || null,
+      location: String(values.location).trim(), department: String(values.department).trim(), floor: String(values.floor).trim(),
+      building: String(values.building).trim(), assignee: String(values.assignee).trim(), status: values.status,
+      brand: String(values.brand || '').trim() || null, serial_number: String(values.serial_number || '').trim() || null,
+      price: Number(values.price) || 0, image_path: null };
+    saveButton.disabled = true; saveButton.textContent = 'กำลังบันทึก…';
+    let path = null;
+    if (file && supabase && session?.user) {
+      const ext = file.type === 'image/jpeg' ? 'jpg' : file.type === 'image/png' ? 'png' : 'webp';
+      path = cleanPathPart(record.category) + '/' + cleanPathPart(record.asset_code) + '-' + cleanPathPart(record.name) + '.' + ext;
+      const { error: uploadError } = await supabase.storage.from('it-asset-images').upload(path, file, { contentType: file.type, upsert: false });
+      if (uploadError) { toast('อัปโหลดภาพไม่สำเร็จ: ' + uploadError.message, true); saveButton.disabled = false; saveButton.innerHTML = icon('plus', 16) + ' บันทึกครุภัณฑ์'; renderIcons(); return; }
+      record.image_path = path;
+    }
+    if (supabase && session?.user) {
+      const { data, error } = await supabase.from('it_assets').insert({ ...record, created_by: session.user.id }).select().single();
+      if (error) { if (path) await supabase.storage.from('it-asset-images').remove([path]); toast('บันทึกไม่สำเร็จ: ' + error.message, true); saveButton.disabled = false; saveButton.innerHTML = icon('plus', 16) + ' บันทึกครุภัณฑ์'; renderIcons(); return; }
+      assets.unshift(data);
+    } else { if (file) toast('โหมดตัวอย่างไม่สามารถจัดเก็บภาพถาวรได้', true); assets.unshift({ ...record, id: 'local-' + Date.now() }); }
+    close(); renderContent(); renderIcons(); toast('เพิ่มครุภัณฑ์เรียบร้อย');
+  };
+}
 async function deleteAsset(id) { if (userRole !== 'super_admin' && supabase) return toast('เฉพาะ Super Admin ลบครุภัณฑ์ได้', true); const target = assets.find(a => String(a.id) === String(id)); if (!target || !confirm(`ยืนยันลบ “${target.name}” (${target.asset_code}) หรือไม่?`)) return; if (supabase && session?.user) { const { error } = await supabase.from('it_assets').delete().eq('id', id); if (error) return toast(`ลบไม่สำเร็จ: ${error.message}`, true); } assets = assets.filter(a => String(a.id) !== String(id)); renderContent(); renderIcons(); toast('ลบรายการแล้ว'); }
 
-function exportCsv() { const headers = ['รหัสครุภัณฑ์', 'ชื่อ', 'หมวดหมู่', 'ยี่ห้อ', 'หมายเลขเครื่อง', 'สถานที่', 'หน่วยงาน', 'สถานะ', 'วันที่จัดซื้อ', 'ราคา']; const rows = filteredAssets().map(a => [a.asset_code, a.name, a.category, a.brand, a.serial_number, a.location, a.department, a.status, a.purchase_date, a.price]); const csv = '\ufeff' + [headers, ...rows].map(row => row.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n'); const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })), download: `BCN CKR-IT-assets-${new Date().toISOString().slice(0,10)}.csv` }); a.click(); URL.revokeObjectURL(a.href); toast('ส่งออกรายงาน CSV แล้ว'); }
+function exportCsv() { const headers = ['เลขครุภัณฑ์', 'ชื่อผลิตภัณฑ์', 'ประเภท', 'วันที่ได้รับ', 'ปีงบประมาณ', 'สถานที่', 'หน่วยงาน', 'ชั้น', 'อาคาร', 'ผู้รับผิดชอบ', 'สถานะ', 'ภาพอุปกรณ์', 'ยี่ห้อ / รุ่น', 'หมายเลขเครื่อง', 'ราคา']; const rows = filteredAssets().map(a => [a.asset_code, a.name, a.category, a.received_date || a.purchase_date, a.fiscal_year || thaiFiscalYear(a.received_date || a.purchase_date), a.location, a.department, a.floor, a.building, a.assignee, a.status, a.image_path, a.brand, a.serial_number, a.price]); const csv = '\ufeff' + [headers, ...rows].map(row => row.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n'); const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })), download: `BCN CKR-IT-assets-${new Date().toISOString().slice(0,10)}.csv` }); a.click(); URL.revokeObjectURL(a.href); toast('ส่งออกรายงาน CSV แล้ว'); }
 
 function canManageAssets() { return !supabase || ['super_admin', 'asset_manager'].includes(userRole); }
 function roleLabel(role) { return ({ super_admin: 'Super Admin', asset_manager: 'ผู้บันทึกครุภัณฑ์', viewer: 'ผู้ดูข้อมูล' })[role] || 'ยังไม่กำหนดสิทธิ์'; }
