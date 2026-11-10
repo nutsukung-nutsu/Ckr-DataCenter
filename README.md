@@ -15,10 +15,11 @@
 
 1. ติดตั้ง Node.js 20 ขึ้นไป
 2. คัดลอก `.env.example` เป็น `.env.local` แล้วใส่ Supabase Project URL และ publishable/anon key
-3. ใน Supabase SQL Editor ให้รัน `supabase/schema.sql`
-4. สร้างบัญชีบุคลากรใน Supabase Dashboard → Authentication → Users
-5. ติดตั้งและเปิดเว็บ: `npm install`, `npm run dev`
-6. สร้างไฟล์สำหรับเผยแพร่: `npm run build` (ผลลัพธ์อยู่ใน `dist/`)
+3. ใน Supabase SQL Editor ให้รัน `supabase/schema.sql` แล้วรัน `supabase/role_access.sql` เพื่อเปิดสิทธิ์ตามบทบาท
+4. สร้างบัญชีบุคลากรใน Supabase Dashboard → Authentication → Users (อย่าใส่รหัสผ่านในโค้ดหรือ GitHub)
+5. Super Admin กำหนดบทบาทได้ในเมนู **กำหนดสิทธิ์ผู้ใช้**
+6. ติดตั้งและเปิดเว็บ: `npm install`, `npm run dev`
+7. สร้างไฟล์สำหรับเผยแพร่: `npm run build` (ผลลัพธ์อยู่ใน `dist/`)
 
 ห้ามนำ `service_role` key มาใส่ในเว็บ ให้ใช้ publishable/anon key พร้อมเปิด RLS เท่านั้น ข้อมูลเดโมจะแสดงจนกว่าจะกำหนด URL และ key ถูกต้อง
 
@@ -39,6 +40,6 @@
 
 เมื่อ push ไป `main` workflow จะ build แล้ว deploy ไป Cloudflare Pages ให้ สร้าง Pages project ชื่อเดียวกับ `CLOUDFLARE_PAGES_PROJECT` และกำหนด `main` เป็น production branch ก่อน
 
-## หมายเหตุด้านสิทธิ์
+## บทบาทและสิทธิ์
 
-Schema เริ่มต้นอนุญาตผู้ใช้ที่ลงชื่อเข้าใช้แล้วอ่าน/เพิ่ม/แก้ไข/ลบรายการได้ เหมาะสำหรับทดลองระบบภายในที่เชื่อถือได้ ก่อนใช้จริงควรเพิ่มตาราง roles และจำกัดสิทธิ์แก้ไข/ลบตามบทบาท รวมถึงกำหนดนโยบายการสำรองข้อมูลและอายุการเก็บข้อมูลร่วมกับผู้ดูแลระบบของวิทยาลัย
+อ่าน [คู่มือบทบาทผู้ใช้](supabase/ROLES.md) ก่อนใช้งานจริง บทบาทและนโยบายฐานข้อมูลกำหนดไว้ใน `supabase/role_access.sql`; หากยังไม่รัน migration ระบบจะไม่เปิด session ให้บัญชีที่ยังไม่มีบทบาท

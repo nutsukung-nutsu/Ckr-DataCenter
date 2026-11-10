@@ -27,3 +27,8 @@
 
 .login-centered .mobile-brand{display:none!important}
 .login-shell.login-centered{grid-template-columns:1fr}
+.login-centered .login-school-name{font-size:13px;line-height:1.55;margin-bottom:11px}
+.login-emblem-ring img{width:116%;height:116%;object-fit:cover;object-position:center;display:block}
+.login-centered .login-legal{display:block;text-align:center;color:#668096;font-size:11px;line-height:1.6}
+.login-centered .login-footer{margin-top:17px;padding-top:13px}
+.role-select{min-width:170px;height:34px;padding:0 9px;border:1px solid #e2e5ed;border-radius:7px;background:#fff;color:#3e4356;font-size:12px}
