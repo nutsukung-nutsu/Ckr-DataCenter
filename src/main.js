@@ -189,17 +189,17 @@ function openAssetModal() {
   const statuses = statusMetrics.map(item => '<option>' + escapeHtml(item.name) + '</option>').join('');
   modal.innerHTML = '<section class="asset-modal"><div class="modal-head"><div><span class="section-kicker">ASSET REGISTRY</span><h2>เพิ่มครุภัณฑ์ใหม่</h2></div><button class="icon-button" id="close-modal">' + icon('x', 19) + '</button></div>' +
     '<form id="asset-form"><div class="form-grid">' +
-    '<div class="field"><label>เลขครุภัณฑ์ <span>*</span></label><input name="asset_code" placeholder="เช่น IT-2569-001" required /></div>' +
-    '<div class="field"><label>ชื่อผลิตภัณฑ์ <span>*</span></label><input name="name" placeholder="ชื่อผลิตภัณฑ์" required /></div>' +
-    '<div class="field"><label>ประเภท <span>*</span></label><select name="category" required>' + categories + '</select></div>' +
-    '<div class="field"><label>วันที่ได้รับ <span>*</span></label><input name="received_date" type="date" required /></div>' +
-    '<div class="field"><label>ปีงบประมาณ <span>*</span></label><input name="fiscal_year" type="number" min="2500" max="3000" placeholder="เช่น 2569" required /></div>' +
-    '<div class="field"><label>สถานที่ <span>*</span></label><input name="location" placeholder="เช่น ห้องปฏิบัติการ" required /></div>' +
-    '<div class="field"><label>หน่วยงาน <span>*</span></label><input name="department" placeholder="หน่วยงานที่รับผิดชอบ" required /></div>' +
-    '<div class="field"><label>ชั้น <span>*</span></label><input name="floor" placeholder="เช่น ชั้น 2" required /></div>' +
-    '<div class="field"><label>อาคาร <span>*</span></label><input name="building" placeholder="เช่น อาคาร 1" required /></div>' +
-    '<div class="field"><label>ผู้รับผิดชอบ <span>*</span></label><input name="assignee" placeholder="ชื่อผู้รับผิดชอบ" required /></div>' +
-    '<div class="field"><label>สถานะ <span>*</span></label><select name="status" required>' + statuses + '</select></div>' +
+    '<div class="field"><label>เลขครุภัณฑ์</label><input name="asset_code" placeholder="เช่น IT-2569-001" /></div>' +
+    '<div class="field"><label>ชื่อผลิตภัณฑ์</label><input name="name" placeholder="ชื่อผลิตภัณฑ์" /></div>' +
+    '<div class="field"><label>ประเภท</label><select name="category">' + categories + '</select></div>' +
+    '<div class="field"><label>วันที่ได้รับ</label><input name="received_date" type="date" /></div>' +
+    '<div class="field"><label>ปีงบประมาณ</label><input name="fiscal_year" type="number" min="2500" max="3000" placeholder="เช่น 2569" /></div>' +
+    '<div class="field"><label>สถานที่</label><input name="location" placeholder="เช่น ห้องปฏิบัติการ" /></div>' +
+    '<div class="field"><label>หน่วยงาน</label><input name="department" placeholder="หน่วยงานที่รับผิดชอบ" /></div>' +
+    '<div class="field"><label>ชั้น</label><input name="floor" placeholder="เช่น ชั้น 2" /></div>' +
+    '<div class="field"><label>อาคาร</label><input name="building" placeholder="เช่น อาคาร 1" /></div>' +
+    '<div class="field"><label>ผู้รับผิดชอบ</label><input name="assignee" placeholder="ชื่อผู้รับผิดชอบ" /></div>' +
+    '<div class="field"><label>สถานะ</label><select name="status">' + statuses + '</select></div>' +
     '<div class="field image-field"><label>ภาพอุปกรณ์</label><input id="asset-image" type="file" accept="image/jpeg,image/png,image/webp" /><div id="asset-image-preview" class="asset-image-preview"><span>เลือกรูป JPG, PNG หรือ WebP ขนาดไม่เกิน 10 MB</span></div><small>จัดเก็บแยกโฟลเดอร์ตามประเภท และตั้งชื่อด้วยเลขครุภัณฑ์กับผลิตภัณฑ์</small></div>' +
     '</div><details class="optional-asset-details"><summary>ข้อมูลเพิ่มเติม</summary><div class="form-grid">' +
     '<div class="field"><label>ยี่ห้อ / รุ่น</label><input name="brand" placeholder="ระบุยี่ห้อและรุ่น" /></div>' +
@@ -221,17 +221,17 @@ function openAssetModal() {
   form.onsubmit = async event => {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(form)), file = imageInput.files?.[0] || null;
-    const record = { asset_code: String(values.asset_code).trim(), name: String(values.name).trim(), category: values.category,
+    const record = { asset_code: String(values.asset_code || '').trim() || null, name: String(values.name || '').trim() || null, category: values.category || 'อื่น ๆ',
       received_date: values.received_date || null, purchase_date: values.received_date || null, fiscal_year: Number(values.fiscal_year) || null,
-      location: String(values.location).trim(), department: String(values.department).trim(), floor: String(values.floor).trim(),
-      building: String(values.building).trim(), assignee: String(values.assignee).trim(), status: values.status,
+      location: String(values.location || '').trim() || null, department: String(values.department || '').trim() || null, floor: String(values.floor || '').trim() || null,
+      building: String(values.building || '').trim() || null, assignee: String(values.assignee || '').trim() || null, status: values.status || 'พร้อมใช้งาน',
       brand: String(values.brand || '').trim() || null, serial_number: String(values.serial_number || '').trim() || null,
       price: Number(values.price) || 0, image_path: null };
     saveButton.disabled = true; saveButton.textContent = 'กำลังบันทึก…';
     let path = null;
     if (file && supabase && session?.user) {
       const ext = file.type === 'image/jpeg' ? 'jpg' : file.type === 'image/png' ? 'png' : 'webp';
-      path = cleanPathPart(record.category) + '/' + cleanPathPart(record.asset_code) + '-' + cleanPathPart(record.name) + '.' + ext;
+      path = cleanPathPart(record.category || 'อื่น ๆ') + '/' + cleanPathPart(record.asset_code || 'ไม่ระบุเลข') + '-' + cleanPathPart(record.name || 'ไม่ระบุชื่อ') + '.' + ext;
       const { error: uploadError } = await supabase.storage.from('it-asset-images').upload(path, file, { contentType: file.type, upsert: false });
       if (uploadError) { toast('อัปโหลดภาพไม่สำเร็จ: ' + uploadError.message, true); saveButton.disabled = false; saveButton.innerHTML = icon('plus', 16) + ' บันทึกครุภัณฑ์'; renderIcons(); return; }
       record.image_path = path;

@@ -3,8 +3,8 @@ create extension if not exists pgcrypto;
 
 create table if not exists public.it_assets (
   id uuid primary key default gen_random_uuid(),
-  asset_code text not null unique,
-  name text not null,
+  asset_code text unique,
+  name text,
   category text not null default 'อื่น ๆ',
   brand text,
   serial_number text,
