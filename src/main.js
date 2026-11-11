@@ -150,14 +150,17 @@ function renderContent() {
   const scopedCategoryCount = category => scopedAssets.filter(asset => asset.category === category).length;
   const statusCards = statusMetrics.map(metric => `<article class="metric-card premium-status-card status-${metric.tone}"><div class="metric-top"><span>${metric.name}</span><div class="metric-icon ${metric.tone}">${icon(metric.icon, 19)}</div></div><div class="metric-value">${scopedStatusCount(metric)}<small>รายการ</small></div><div class="metric-foot"><span>${metric.name === 'พร้อมใช้งาน' ? 'ไม่นับรวมแทงจำหน่ายแล้ว' : metric.name === 'แทงจำหน่าย' ? 'จำหน่ายออกแล้ว' : 'สถานะปัจจุบัน'}</span></div></article>`).join('');
   const pageTitle = view === 'dashboard' ? 'ภาพรวมครุภัณฑ์' : categoryFilter === 'ทั้งหมด' ? 'ทะเบียนครุภัณฑ์' : `ทะเบียนครุภัณฑ์ · ครุภัณฑ์${escapeHtml(categoryFilter)}`;
-  content.innerHTML = `<div class="page-heading"><div><h1>${pageTitle}</h1><p>ติดตามสถานะครุภัณฑ์ของวิทยาลัยพยาบาลบรมราชชนนี จักรีรัชได้ในภาพเดียว</p></div><div class="heading-actions"><button id="export-button" class="button secondary">${icon('download', 16)} ส่งออกรายงาน</button>${canManageAssets() ? `<button id="add-asset" class="button primary">${icon('plus', 17)} เพิ่มครุภัณฑ์</button>` : ''}</div></div>
+  content.innerHTML = `<div class="page-heading"><div><h1>${pageTitle}</h1><p>ติดตามสถานะครุภัณฑ์ของวิทยาลัยพยาบาลบรมราชชนนี จักรีรัชได้ในภาพเดียว</p></div>${view === 'assets' ? `<div class="heading-actions">${canManageAssets() ? `<button id="import-assets" class="button secondary">${icon('file-up', 16)} นำเข้า CSV</button><button id="asset-csv-template" class="button secondary">${icon('file-down', 16)} แบบฟอร์ม CSV</button>` : ''}<button id="export-button" class="button secondary">${icon('download', 16)} ส่งออกรายงาน</button>${canManageAssets() ? `<button id="add-asset" class="button primary">${icon('plus', 17)} เพิ่มครุภัณฑ์</button><input id="asset-import-file" type="file" accept=".csv,text/csv" hidden />` : ''}</div>` : ''}</div>
   ${view === 'dashboard' ? `<section class="welcome-banner"><div class="welcome-text"><div class="welcome-tag">${icon('sparkles', 14)} YOUR ASSET COMMAND CENTER</div><h2>ทุกสินทรัพย์ <span>พร้อมจัดการ</span></h2><p>ภาพรวมข้อมูลครุภัณฑ์งานเทคโนโลยีสารสนเทศ ประจำวิทยาลัย</p><button id="view-all" class="welcome-link">ดูทะเบียนครุภัณฑ์ทั้งหมด ${icon('arrow-right', 15)}</button></div><div class="banner-visual"><div class="visual-orbit orbit-one"></div><div class="visual-orbit orbit-two"></div><div class="visual-core">${icon('boxes', 34)}</div><div class="float-chip chip-a">${icon('monitor', 15)} ${total} รายการ</div><div class="float-chip chip-b">${icon('shield-check', 15)} พร้อมใช้งาน</div><div class="visual-sparkle sparkle-a">✳</div><div class="visual-sparkle sparkle-b">✦</div></div></section>` : ''}
   <section class="metric-grid category-metrics ${view === 'dashboard' ? 'dashboard-premium-category' : ''} ${categoryFilter === 'ทั้งหมด' ? '' : 'category-summary-single'}" aria-label="สถิติตามประเภทครุภัณฑ์"><article class="metric-card ${categoryFilter === 'ทั้งหมด' ? '' : 'premium-total-card'}"><div class="metric-top"><span>${categoryFilter === 'ทั้งหมด' ? 'ครุภัณฑ์ทั้งหมด' : `ครุภัณฑ์${escapeHtml(categoryFilter)}`}</span><div class="metric-icon violet">${icon('boxes', 19)}</div></div><div class="metric-value">${total}<small>รายการ</small></div><div class="metric-foot"><span>${categoryFilter === 'ทั้งหมด' ? 'ทุกประเภท' : 'จำนวนครุภัณฑ์ในหมวดนี้'}</span></div></article>${categoryFilter === 'ทั้งหมด' ? assetCategories.slice(0, 3).map((category, index) => `<article class="metric-card"><div class="metric-top"><span>ครุภัณฑ์${category}</span><div class="metric-icon ${['blue', 'amber', 'mint'][index]}">${icon(index === 0 ? 'monitor' : index === 1 ? 'plug-zap' : 'presentation', 19)}</div></div><div class="metric-value">${scopedCategoryCount(category)}<small>รายการ</small></div><div class="metric-foot"><span>${total ? Math.round(scopedCategoryCount(category) / total * 100) : 0}% ของครุภัณฑ์ทั้งหมด</span></div></article>`).join('') : statusCards}</section>
   ${categoryFilter === 'ทั้งหมด' ? `<section class="metric-grid status-metrics ${view === 'dashboard' ? 'dashboard-premium-status' : ''}" aria-label="สถิติตามสถานะครุภัณฑ์">${statusCards}</section>` : ''}
   ${view === 'dashboard' ? renderDashboardCharts() : ''}
   <section class="panel asset-panel"><div class="asset-panel-head"><div><h3>${view === 'dashboard' ? 'รายการครุภัณฑ์ทั้งหมด' : categoryFilter === 'ทั้งหมด' ? 'รายการครุภัณฑ์' : `รายการครุภัณฑ์${escapeHtml(categoryFilter)}`}</h3><p>ทะเบียนครุภัณฑ์งานเทคโนโลยีสารสนเทศ</p></div><button class="view-all" id="view-all-assets">ดูทั้งหมด ${icon('arrow-right', 14)}</button></div><div class="table-toolbar"><div class="search-box">${icon('search', 16)}<input id="asset-search" placeholder="ค้นหาชื่อ, รหัสครุภัณฑ์..." value="${escapeHtml(searchTerm)}"/><kbd>⌘ K</kbd></div><div class="filters"><select id="category-filter"><option value="ทั้งหมด">ทั้งหมด</option>${[...new Set([...assetCategories, ...assets.map(a => a.category)])].map(c => `<option value="${escapeHtml(c)}" ${categoryFilter === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select><select id="status-filter"><option>ทั้งหมด</option>${[...new Set(assets.map(a => a.status))].map(s => `<option ${statusFilter === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('')}</select><button class="filter-button" id="refresh-button">${icon('rotate-cw', 15)} รีเฟรช</button></div></div><div class="table-scroll"><table><thead><tr><th>รหัส / รายการ</th><th>หมวดหมู่</th><th>สถานที่จัดเก็บ</th><th>ผู้รับผิดชอบ</th><th>สถานะ</th><th>ราคาจัดซื้อ</th><th></th></tr></thead><tbody id="asset-rows">${tableRows()}</tbody></table></div><div class="table-bottom"><span>แสดง <strong id="row-count">${filteredAssets().length}</strong> จาก ${total} รายการ</span><div class="pagination"><button disabled>${icon('chevron-left', 15)}</button><button class="current-page">1</button><button disabled>2</button><button disabled>3</button><span>…</span><button disabled>12</button><button disabled>${icon('chevron-right', 15)}</button></div></div></section><footer class="app-footer"><span class="app-legal">© 2026 วิทยาลัยพยาบาลบรมราชชนนี จักรีรัช · คณะพยาบาลศาสตร์ สถาบันพระบรมราชชนก</span><span>BCN CKR IT ASSET SYSTEM <i class="footer-dot"></i> v0.1.0</span></footer>`;
   document.querySelector('#add-asset')?.addEventListener('click', openAssetModal);
-  document.querySelector('#export-button').addEventListener('click', exportCsv);
+  document.querySelector('#export-button')?.addEventListener('click', exportCsv);
+  document.querySelector('#asset-csv-template')?.addEventListener('click', downloadAssetCsvTemplate);
+  document.querySelector('#import-assets')?.addEventListener('click', () => document.querySelector('#asset-import-file')?.click());
+  document.querySelector('#asset-import-file')?.addEventListener('change', async event => { const file = event.target.files?.[0]; if (file) await importAssetsCsv(file); event.target.value = ''; });
   document.querySelector('#view-all')?.addEventListener('click', () => { view = 'assets'; categoryFilter = 'ทั้งหมด'; activeNav = 'ทะเบียนครุภัณฑ์'; renderApp(); });
   document.querySelector('#view-all-assets').addEventListener('click', () => { view = 'assets'; categoryFilter = 'ทั้งหมด'; activeNav = 'ทะเบียนครุภัณฑ์'; renderApp(); });
   document.querySelector('#asset-search').addEventListener('input', e => { searchTerm = e.target.value; updateRows(); });
@@ -259,6 +262,91 @@ function openAssetModal() {
 async function deleteAsset(id) { if (userRole !== 'super_admin' && supabase) return toast('เฉพาะ Super Admin ลบครุภัณฑ์ได้', true); const target = assets.find(a => String(a.id) === String(id)); if (!target || !confirm(`ยืนยันลบ “${target.name}” (${target.asset_code}) หรือไม่?`)) return; if (supabase && session?.user) { const { error } = await supabase.from('it_assets').delete().eq('id', id); if (error) return toast(`ลบไม่สำเร็จ: ${error.message}`, true); } assets = assets.filter(a => String(a.id) !== String(id)); renderContent(); renderIcons(); toast('ลบรายการแล้ว'); }
 
 function exportCsv() { const headers = ['เลขครุภัณฑ์', 'ชื่อผลิตภัณฑ์', 'ประเภท', 'วันที่ได้รับ', 'ปีงบประมาณ', 'สถานที่', 'หน่วยงาน', 'ชั้น', 'อาคาร', 'ผู้รับผิดชอบ', 'สถานะ', 'ภาพอุปกรณ์', 'ยี่ห้อ / รุ่น', 'หมายเลขเครื่อง', 'ราคา']; const rows = filteredAssets().map(a => [a.asset_code, a.name, a.category, a.received_date || a.purchase_date, a.fiscal_year || thaiFiscalYear(a.received_date || a.purchase_date), a.location, a.department, a.floor, a.building, a.assignee, a.status, a.image_path, a.brand, a.serial_number, a.price]); const csv = '\ufeff' + [headers, ...rows].map(row => row.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n'); const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })), download: `BCN CKR-IT-assets-${new Date().toISOString().slice(0,10)}.csv` }); a.click(); URL.revokeObjectURL(a.href); toast('ส่งออกรายงาน CSV แล้ว'); }
+
+const assetCsvHeaders = ['เลขครุภัณฑ์', 'ชื่อผลิตภัณฑ์', 'ประเภท', 'วันที่ได้รับ', 'ปีงบประมาณ', 'สถานที่', 'หน่วยงาน', 'ชั้น', 'อาคาร', 'ผู้รับผิดชอบ', 'สถานะ', 'ภาพอุปกรณ์', 'ยี่ห้อ / รุ่น', 'หมายเลขเครื่อง', 'ราคา'];
+function csvCell(value) { return `"${String(value ?? '').replaceAll('"', '""')}"`; }
+function downloadAssetCsvTemplate() {
+  const example = ['7440-001-001/1', 'เครื่องคอมพิวเตอร์ตัวอย่าง', 'คอมพิวเตอร์', '2026-10-01', '2569', 'ห้องปฏิบัติการ', 'งานเทคโนโลยีสารสนเทศ', '2', 'อาคาร 1', 'ชื่อผู้รับผิดชอบ', 'พร้อมใช้งาน', '', 'ยี่ห้อ / รุ่น', 'SERIAL-001', '25000'];
+  const csv = '\ufeff' + [assetCsvHeaders, example].map(row => row.map(csvCell).join(',')).join('\r\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const link = Object.assign(document.createElement('a'), { href: url, download: 'CKR-assets-template.csv' });
+  link.click(); URL.revokeObjectURL(url);
+}
+function parseCsv(text) {
+  const delimiter = (text.split(/\r?\n/, 1)[0].match(/;/g) || []).length > (text.split(/\r?\n/, 1)[0].match(/,/g) || []).length ? ';' : ',';
+  const rows = []; let row = [], cell = '', quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (quoted && char === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+    else if (char === '"') quoted = !quoted;
+    else if (!quoted && char === delimiter) { row.push(cell.trim()); cell = ''; }
+    else if (!quoted && (char === '\n' || char === '\r')) { if (char === '\r' && text[i + 1] === '\n') i++; row.push(cell.trim()); if (row.some(value => value !== '')) rows.push(row); row = []; cell = ''; }
+    else cell += char;
+  }
+  row.push(cell.trim()); if (row.some(value => value !== '')) rows.push(row);
+  return rows;
+}
+function normalizeCsvHeader(value) { return String(value ?? '').replace(/^\ufeff/, '').trim().toLowerCase().replace(/[\s_\-/()]+/g, ''); }
+function parseCsvDate(value) {
+  if (!value) return null;
+  const text = String(value).trim();
+  let match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  let iso;
+  if (match) { const year = Number(match[1]) > 2400 ? Number(match[1]) - 543 : Number(match[1]); iso = `${year}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`; }
+  else {
+    match = text.match(/^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})$/);
+    if (!match) return null;
+    let year = Number(match[3]); if (year > 2400) year -= 543;
+    iso = `${year}-${match[2].padStart(2, '0')}-${match[1].padStart(2, '0')}`;
+  }
+  const parsed = new Date(`${iso}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === iso ? iso : null;
+}
+async function importAssetsCsv(file) {
+  if (!canManageAssets()) return toast('บัญชีนี้ไม่มีสิทธิ์นำเข้าครุภัณฑ์', true);
+  try {
+    const rows = parseCsv((await file.text()).replace(/^\ufeff/, ''));
+    if (rows.length < 2) return toast('ไม่พบแถวข้อมูลในไฟล์ CSV', true);
+    const headers = rows[0].map(normalizeCsvHeader);
+    const aliases = {
+      asset_code: ['เลขครุภัณฑ์', 'รหัสครุภัณฑ์', 'assetcode', 'code'], name: ['ชื่อผลิตภัณฑ์', 'ชื่อครุภัณฑ์', 'ชื่อ', 'name', 'productname'],
+      category: ['ประเภท', 'หมวดหมู่', 'category', 'type'], received_date: ['วันที่ได้รับ', 'วันที่จัดซื้อ', 'receiveddate', 'purchasedate', 'date'],
+      fiscal_year: ['ปีงบประมาณ', 'fiscalyear'], location: ['สถานที่', 'สถานที่จัดเก็บ', 'location'], department: ['หน่วยงาน', 'department', 'unit'],
+      floor: ['ชั้น', 'floor'], building: ['อาคาร', 'building'], assignee: ['ผู้รับผิดชอบ', 'assignee', 'responsible'], status: ['สถานะ', 'status'],
+      image_path: ['ภาพอุปกรณ์', 'รูปภาพ', 'imagepath'], brand: ['ยี่ห้อรุ่น', 'ยี่ห้อ', 'รุ่น', 'brand', 'model'], serial_number: ['หมายเลขเครื่อง', 'serialnumber', 'serial'], price: ['ราคา', 'ราคาจัดซื้อ', 'price'], details: ['รายละเอียด', 'เพิ่มเติม', 'details', 'notes']
+    };
+    const indexes = Object.fromEntries(Object.entries(aliases).map(([key, names]) => [key, headers.findIndex(header => names.some(name => normalizeCsvHeader(name) === header))]));
+    if (indexes.name < 0) return toast('ไม่พบคอลัมน์ “ชื่อผลิตภัณฑ์” ในหัวตาราง', true);
+    const knownStatuses = new Set(statusMetrics.flatMap(metric => metric.matches));
+    const currentCodes = new Set(assets.map(asset => String(asset.asset_code || '').trim().toLowerCase()).filter(Boolean));
+    const batchCodes = new Set(); const pending = []; let skipped = 0;
+    for (const cells of rows.slice(1)) {
+      const value = key => indexes[key] >= 0 ? String(cells[indexes[key]] ?? '').trim() : '';
+      const name = value('name'); const assetCode = value('asset_code');
+      if (!name || (assetCode && (currentCodes.has(assetCode.toLowerCase()) || batchCodes.has(assetCode.toLowerCase())))) { skipped++; continue; }
+      if (assetCode) batchCodes.add(assetCode.toLowerCase());
+      const date = parseCsvDate(value('received_date'));
+      const priceText = value('price').replace(/[฿,\s]/g, '');
+      const price = priceText ? Number(priceText) : 0;
+      const fiscalYearText = value('fiscal_year');
+      const fiscalYear = fiscalYearText ? Number(fiscalYearText.replace(/[^0-9]/g, '')) : date ? Number(thaiFiscalYear(date)) : null;
+      const statusText = value('status');
+      if (value('received_date') && !date || priceText && (!Number.isFinite(price) || price < 0) || fiscalYearText && !Number.isFinite(fiscalYear) || statusText && !knownStatuses.has(statusText)) { skipped++; if (assetCode) batchCodes.delete(assetCode.toLowerCase()); continue; }
+      pending.push({ asset_code: assetCode || null, name, category: value('category') || 'อื่น ๆ', received_date: date, purchase_date: date, fiscal_year: fiscalYear, location: value('location') || null, department: value('department') || null, floor: value('floor') || null, building: value('building') || null, assignee: value('assignee') || null, status: statusText || 'พร้อมใช้งาน', image_path: value('image_path') || null, brand: value('brand') || null, serial_number: value('serial_number') || null, price: Number.isFinite(price) ? price : 0, notes: value('details') || null });
+    }
+    if (!pending.length) return toast(`ไม่มีรายการใหม่ให้นำเข้า · ข้าม ${skipped} แถว`, true);
+    if (supabase && session?.user) {
+      const records = pending.map(record => ({ ...record, created_by: session.user.id }));
+      const { data, error } = await supabase.from('it_assets').insert(records).select();
+      if (error) return toast(`นำเข้าไม่สำเร็จ: ${error.message}`, true);
+      assets = [...(data || []), ...assets];
+    } else {
+      assets = [...pending.map((record, index) => ({ ...record, id: `local-import-${Date.now()}-${index}` })), ...assets];
+      saveDemoAssets();
+    }
+    renderContent(); renderIcons(); toast(`นำเข้าสำเร็จ ${pending.length} รายการ · ข้าม ${skipped} แถว`);
+  } catch (error) { toast(`อ่านไฟล์ CSV ไม่สำเร็จ: ${error.message}`, true); }
+}
 
 function canManageAssets() { return !supabase || ['super_admin', 'asset_manager'].includes(userRole); }
 function roleLabel(role) { return ({ super_admin: 'Super Admin', asset_manager: 'ผู้บันทึกครุภัณฑ์', viewer: 'ผู้ดูข้อมูล' })[role] || 'ยังไม่กำหนดสิทธิ์'; }
