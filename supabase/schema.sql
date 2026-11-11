@@ -102,11 +102,16 @@ create table if not exists public.system_options (
   value text not null check (length(trim(value)) between 1 and 100),
   is_active boolean not null default true,
   sort_order integer not null default 0,
+  department_id uuid references public.system_options(id) on delete set null,
+  assignee_type text,
   created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
   unique (option_type, value)
 );
+alter table public.system_options add column if not exists department_id uuid references public.system_options(id) on delete set null;
+alter table public.system_options add column if not exists assignee_type text;
 create index if not exists system_options_type_active_order_idx on public.system_options(option_type, is_active, sort_order, value);
+create index if not exists system_options_department_id_idx on public.system_options(department_id) where option_type = 'assignees';
 alter table public.system_options enable row level security;
 drop policy if exists "Authenticated users can read system options" on public.system_options;
 create policy "Authenticated users can read system options" on public.system_options for select to authenticated using (true);

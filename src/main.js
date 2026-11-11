@@ -96,7 +96,7 @@ const catalogGroups = [
   ['ink_types', 'ประเภทของหมึก', 'เช่น หมึกอิงค์เจ็ท หมึกเลเซอร์ หรือดรัม'], ['material_units', 'หน่วยนับวัสดุ', 'เช่น ชิ้น กล่อง ตลับ หรือรีม']
 ];
 function canManageSettings() { return !supabase || userRole === 'super_admin'; }
-async function addSystemOption(type, rawValue, departmentId = null) {
+async function addSystemOption(type, rawValue, departmentId = null, assigneeType = '') {
   const value = String(rawValue || '').trim().replace(/\s+/g, ' ');
   if (!canManageSettings()) return toast('เฉพาะ Super Admin แก้ไขรายการตั้งค่าได้', true);
   if (!value || value.length > 100) return toast('กรอกชื่อรายการไม่เกิน 100 ตัวอักษร', true);
@@ -109,7 +109,7 @@ async function addSystemOption(type, rawValue, departmentId = null) {
     if (supabase && session?.user) { const { error } = await supabase.from('system_options').update({ is_active: true }).eq('id', existing.id); if (error) return toast(`เปิดใช้รายการไม่ได้: ${error.message}`, true); }
     existing.is_active = true;
   } else {
-    const record = { option_type: type, value, is_active: true, sort_order: Math.max(-1, ...systemOptions.filter(option => option.option_type === type).map(option => Number(option.sort_order) || 0)) + 1, ...(type === 'assignees' && departmentId ? { department_id: departmentId } : {}) };
+    const record = { option_type: type, value, is_active: true, sort_order: Math.max(-1, ...systemOptions.filter(option => option.option_type === type).map(option => Number(option.sort_order) || 0)) + 1, ...(type === 'assignees' ? { ...(departmentId ? { department_id: departmentId } : {}), ...(assigneeType ? { assignee_type: assigneeType } : {}) } : {}) };
     if (supabase && session?.user) {
       const { data, error } = await supabase.from('system_options').upsert({ ...record, created_by: session.user.id }, { onConflict: 'option_type,value' }).select().single();
       if (error) {
@@ -122,7 +122,7 @@ async function addSystemOption(type, rawValue, departmentId = null) {
   }
   saveDemoSystemOptions(); applySystemOptions(); renderApp(); toast('เพิ่มรายการตั้งค่าแล้ว');
 }
-const catalogCsvTypes = new Set(['locations', 'departments', 'buildings', 'assignees']);
+const catalogCsvTypes = new Set(['locations', 'departments', 'buildings', 'floors', 'assignees']);
 function parseCatalogCsv(text) {
   const rows = []; let row = [], cell = '', quoted = false;
   const source = String(text || '').replace(/^\uFEFF/, '');
@@ -143,28 +143,47 @@ function parseCatalogCsv(text) {
   row.push(cell); if (row.some(value => value.trim())) rows.push(row);
   return rows;
 }
-function catalogCsvRows(text) {
+function catalogCsvRows(text, type) {
   const rows = parseCatalogCsv(text);
-  if (!rows.length) return { values: [], headerSkipped: 0, invalidCount: 0, duplicateCount: 0 };
-  const recognized = new Set(['value', 'name', 'รายการ', 'ชื่อ', 'ชื่อรายการ', 'สถานที่', 'สถานที่ใช้งาน/จัดเก็บ', 'หน่วยงาน', 'อาคาร', 'ผู้รับผิดชอบ']);
-  const headers = rows[0].map(value => value.trim().toLocaleLowerCase());
-  const column = headers.findIndex(value => recognized.has(value));
-  const dataRows = column >= 0 ? rows.slice(1) : rows;
-  const valueColumn = column >= 0 ? column : 0;
-  const seen = new Set(), values = [];
+  if (!rows.length) return { entries: [], invalidCount: 0, duplicateCount: 0, missingColumns: false };
+  const normalizeHeader = value => value.trim().toLocaleLowerCase().replace(/[\s_-]/g, '');
+  const headers = rows[0].map(normalizeHeader);
+  const findColumn = aliases => headers.findIndex(value => aliases.includes(value));
+  const seen = new Set(), entries = [];
   let invalidCount = 0, duplicateCount = 0;
+  let dataRows, valueColumn = 0, departmentColumn = -1, typeColumn = -1;
+  if (type === 'assignees') {
+    valueColumn = findColumn(['ชื่อผู้รับผิดชอบ', 'ผู้รับผิดชอบ', 'assignee', 'name', 'value']);
+    departmentColumn = findColumn(['หน่วยงาน', 'department', 'unit']);
+    typeColumn = findColumn(['ประเภท', 'ตำแหน่ง', 'ประเภทผู้รับผิดชอบ', 'assigneetype', 'position', 'title']);
+    if (valueColumn < 0 || departmentColumn < 0) return { entries, invalidCount, duplicateCount, missingColumns: true };
+    dataRows = rows.slice(1);
+  } else {
+    const recognized = new Set(['value', 'name', 'รายการ', 'ชื่อ', 'ชื่อรายการ', 'สถานที่', 'สถานที่ใช้งาน/จัดเก็บ', 'หน่วยงาน', 'อาคาร', 'ชั้น', 'floor']);
+    const column = headers.findIndex(value => recognized.has(value));
+    dataRows = column >= 0 ? rows.slice(1) : rows;
+    valueColumn = column >= 0 ? column : 0;
+  }
   for (const item of dataRows) {
     const value = String(item[valueColumn] || '').trim().replace(/\s+/g, ' ');
     if (!value || value.length > 100) { if (value) invalidCount += 1; continue; }
     const normalized = value.toLocaleLowerCase();
     if (seen.has(normalized)) { duplicateCount += 1; continue; }
-    seen.add(normalized); values.push(value);
+    let departmentId = null, assigneeType = '';
+    if (type === 'assignees') {
+      const departmentName = String(item[departmentColumn] || '').trim();
+      const department = systemOptions.find(option => option.option_type === 'departments' && option.is_active !== false && option.value.toLocaleLowerCase() === departmentName.toLocaleLowerCase());
+      if (!department) { invalidCount += 1; continue; }
+      departmentId = department.id;
+      assigneeType = typeColumn >= 0 ? String(item[typeColumn] || '').trim().replace(/\s+/g, ' ').slice(0, 100) : '';
+    }
+    seen.add(normalized); entries.push({ value, departmentId, assigneeType });
   }
-  return { values, headerSkipped: column >= 0 ? 1 : 0, invalidCount, duplicateCount };
+  return { entries, invalidCount, duplicateCount, missingColumns: false };
 }
 function downloadCatalogCsvTemplate(type) {
   if (!catalogCsvTypes.has(type)) return;
-  const csv = '\ufeffvalue\r\n';
+  const csv = type === 'assignees' ? '\ufeffหน่วยงาน,ชื่อผู้รับผิดชอบ,ประเภท\r\n' : `\ufeff${type === 'floors' ? 'ชั้น' : 'value'}\r\n`;
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   const link = Object.assign(document.createElement('a'), { href: url, download: `CKR-${type}-template.csv` });
   link.click(); URL.revokeObjectURL(url); toast('ดาวน์โหลดแบบฟอร์ม CSV แล้ว');
@@ -173,22 +192,26 @@ async function importCatalogCsv(type, file) {
   if (!catalogCsvTypes.has(type) || !file || !canManageSettings()) return;
   if (file.size > 2 * 1024 * 1024) return toast('ไฟล์ CSV ต้องมีขนาดไม่เกิน 2 MB', true);
   if (!await refreshSystemOptionType(type)) return;
-  const { values, invalidCount, duplicateCount } = catalogCsvRows(await file.text());
-  if (!values.length) return toast('ไม่พบรายการที่นำเข้าได้ · ใช้คอลัมน์ value หรือชื่อรายการ', true);
+  const { entries, invalidCount, duplicateCount, missingColumns } = catalogCsvRows(await file.text(), type);
+  if (missingColumns) return toast('ไฟล์ผู้รับผิดชอบต้องมีคอลัมน์ หน่วยงาน และ ชื่อผู้รับผิดชอบ', true);
+  if (!entries.length) return toast(type === 'assignees' ? 'ไม่พบผู้รับผิดชอบที่นำเข้าได้ · ตรวจสอบชื่อหน่วยงานในไฟล์ให้ตรงกับตั้งค่าระบบ' : 'ไม่พบรายการที่นำเข้าได้ · ใช้คอลัมน์ value หรือชื่อรายการ', true);
   const existingByValue = new Map(systemOptions.filter(option => option.option_type === type).map(option => [option.value.toLocaleLowerCase(), option]));
   let alreadyActiveCount = 0;
   const pending = [], toReactivate = [];
-  for (const value of values) {
+  for (const entry of entries) {
+    const { value } = entry;
     const existing = existingByValue.get(value.toLocaleLowerCase());
-    if (existing?.is_active !== false && existing) alreadyActiveCount += 1;
-    else if (existing) toReactivate.push(existing);
-    else pending.push(value);
+    if (existing?.is_active !== false && existing) {
+      if (type === 'assignees' && (String(existing.department_id || '') !== String(entry.departmentId || '') || (existing.assignee_type || '') !== entry.assigneeType)) pending.push({ ...entry, existing });
+      else alreadyActiveCount += 1;
+    } else if (existing) toReactivate.push({ ...entry, existing });
+    else pending.push(entry);
   }
   if (!pending.length && !toReactivate.length) {
     renderApp(); return toast(`รายการในไฟล์มีอยู่แล้ว ${alreadyActiveCount} รายการ · อัปเดตหน้าจอแล้ว`, true);
   }
   const nextOrder = Math.max(-1, ...systemOptions.filter(option => option.option_type === type).map(option => Number(option.sort_order) || 0)) + 1;
-  const records = [...toReactivate.map(option => ({ option_type: type, value: option.value, is_active: true, sort_order: option.sort_order })), ...pending.map((value, index) => ({ option_type: type, value, is_active: true, sort_order: nextOrder + index, ...(session?.user?.id ? { created_by: session.user.id } : {}) }))];
+  const records = [...toReactivate.map(entry => ({ option_type: type, value: entry.value, is_active: true, sort_order: entry.existing.sort_order, ...(type === 'assignees' ? { department_id: entry.departmentId, assignee_type: entry.assigneeType || null } : {}) })), ...pending.map((entry, index) => ({ option_type: type, value: entry.value, is_active: true, sort_order: entry.existing?.sort_order ?? nextOrder + index, ...(type === 'assignees' ? { department_id: entry.departmentId, assignee_type: entry.assigneeType || null } : {}), ...(session?.user?.id ? { created_by: session.user.id } : {}) }))];
   let imported = 0, reactivated = 0;
   if (supabase && session?.user) {
     const inactiveValues = new Set(systemOptions.filter(option => option.option_type === type && option.is_active === false).map(option => option.value.toLocaleLowerCase()));
@@ -204,8 +227,11 @@ async function importCatalogCsv(type, file) {
   } else {
     for (const record of records) {
       const existingIndex = systemOptions.findIndex(option => option.option_type === type && option.value.toLocaleLowerCase() === record.value.toLocaleLowerCase());
-      if (existingIndex >= 0) { systemOptions[existingIndex].is_active = true; reactivated += 1; }
-      else { systemOptions.push({ ...record, id: `local-${type}-${Date.now()}-${imported}` }); imported += 1; }
+      if (existingIndex >= 0) {
+        const wasInactive = systemOptions[existingIndex].is_active === false;
+        Object.assign(systemOptions[existingIndex], record);
+        if (wasInactive) reactivated += 1;
+      } else { systemOptions.push({ ...record, id: `local-${type}-${Date.now()}-${imported}` }); imported += 1; }
     }
   }
   saveDemoSystemOptions(); applySystemOptions(); renderApp();
@@ -256,12 +282,12 @@ async function renderSettings(content) {
   const cardHtml = type => {
     const [, title, description] = catalogGroups.find(group => group[0] === type);
     const options = systemOptions.filter(option => option.option_type === type);
-    const optionRow = option => `<div class="catalog-option ${option.is_active === false ? 'inactive' : ''}" data-catalog-row="${escapeHtml(option.id)}"><span class="catalog-option-value">${escapeHtml(option.value)}</span>${canEdit ? `<div class="catalog-option-actions"><button type="button" class="catalog-edit" data-option-id="${escapeHtml(option.id)}">แก้ไข</button><button type="button" class="catalog-delete" data-option-id="${escapeHtml(option.id)}" aria-label="ลบ ${escapeHtml(option.value)}">ลบ</button></div>` : ''}</div>`;
+    const optionRow = option => `<div class="catalog-option ${option.is_active === false ? 'inactive' : ''}" data-catalog-row="${escapeHtml(option.id)}"><span class="catalog-option-value">${escapeHtml(option.value)}${type === 'assignees' && option.assignee_type ? `<small class="assignee-type-tag">${escapeHtml(option.assignee_type)}</small>` : ''}</span>${canEdit ? `<div class="catalog-option-actions"><button type="button" class="catalog-edit" data-option-id="${escapeHtml(option.id)}">แก้ไข</button><button type="button" class="catalog-delete" data-option-id="${escapeHtml(option.id)}" aria-label="ลบ ${escapeHtml(option.value)}">ลบ</button></div>` : ''}</div>`;
     if (type === 'assignees') {
       const departments = systemOptions.filter(option => option.option_type === 'departments' && option.is_active !== false);
       const groups = departments.map(department => {
         const people = options.filter(option => String(option.department_id || '') === String(department.id));
-        return `<details class="department-assignee-group"><summary><span>${escapeHtml(department.value)}</span><small>${people.length} คน</small></summary>${canEdit ? `<form class="department-assignee-form" data-department-id="${escapeHtml(department.id)}"><input name="value" maxlength="100" placeholder="เพิ่มผู้รับผิดชอบในหน่วยงานนี้" aria-label="เพิ่มผู้รับผิดชอบใน ${escapeHtml(department.value)}"/><button type="submit" class="button primary">เพิ่ม</button></form>` : ''}<div class="catalog-option-list">${people.map(optionRow).join('') || '<span class="catalog-empty">ยังไม่มีผู้รับผิดชอบในหน่วยงานนี้</span>'}</div></details>`;
+      return `<details class="department-assignee-group"><summary><span>${escapeHtml(department.value)}</span><small>${people.length} คน</small></summary>${canEdit ? `<form class="department-assignee-form" data-department-id="${escapeHtml(department.id)}"><input name="value" maxlength="100" placeholder="ชื่อผู้รับผิดชอบ" aria-label="ชื่อผู้รับผิดชอบใน ${escapeHtml(department.value)}"/><input name="assigneeType" maxlength="100" placeholder="ประเภท/ตำแหน่ง เช่น ผู้อำนวยการ" aria-label="ประเภทหรือตำแหน่งผู้รับผิดชอบ"/><button type="submit" class="button primary">เพิ่ม</button></form>` : ''}<div class="catalog-option-list">${people.map(optionRow).join('') || '<span class="catalog-empty">ยังไม่มีผู้รับผิดชอบในหน่วยงานนี้</span>'}</div></details>`;
       }).join('');
       const unassigned = options.filter(option => !option.department_id);
       return `<article class="panel catalog-card"><div class="catalog-card-heading"><div><h3>${title}</h3><p>เพิ่มรายชื่อภายใต้หน่วยงานที่รับผิดชอบครุภัณฑ์</p></div><span class="catalog-count">${options.filter(option => option.is_active !== false).length} รายการ</span></div>${groups || '<span class="catalog-empty">เพิ่มหน่วยงานก่อน เพื่อกำหนดผู้รับผิดชอบ</span>'}${unassigned.length ? `<details class="department-assignee-group"><summary><span>รายชื่อที่ยังไม่สังกัดหน่วยงาน</span><small>${unassigned.length} คน</small></summary><div class="catalog-option-list">${unassigned.map(optionRow).join('')}</div></details>` : ''}</article>`;
@@ -272,7 +298,7 @@ async function renderSettings(content) {
   content.querySelectorAll('[data-settings-tab]').forEach(button => button.addEventListener('click', () => { settingsTab = button.dataset.settingsTab; localStorage.setItem('bcn-ckr-settings-tab', settingsTab); renderApp(); }));
   content.querySelector('#refresh-system-options').addEventListener('click', async () => { await loadSystemOptions(); renderApp(); toast('อัปเดตรายการตั้งค่าแล้ว'); });
   content.querySelectorAll('.catalog-add-form').forEach(form => form.addEventListener('submit', async event => { event.preventDefault(); await addSystemOption(form.dataset.optionType, new FormData(form).get('value')); }));
-  content.querySelectorAll('.department-assignee-form').forEach(form => form.addEventListener('submit', async event => { event.preventDefault(); await addSystemOption('assignees', new FormData(form).get('value'), form.dataset.departmentId); }));
+  content.querySelectorAll('.department-assignee-form').forEach(form => form.addEventListener('submit', async event => { event.preventDefault(); const fields = new FormData(form); await addSystemOption('assignees', fields.get('value'), form.dataset.departmentId, fields.get('assigneeType')); }));
   content.querySelectorAll('.catalog-import-button').forEach(button => button.addEventListener('click', () => content.querySelector(`[data-catalog-file="${button.dataset.importType}"]`)?.click()));
   content.querySelectorAll('.catalog-template-button').forEach(button => button.addEventListener('click', () => downloadCatalogCsvTemplate(button.dataset.templateType)));
   content.querySelectorAll('[data-catalog-file]').forEach(input => input.addEventListener('change', async () => { const file = input.files?.[0]; input.value = ''; if (file) await importCatalogCsv(input.dataset.catalogFile, file); }));
