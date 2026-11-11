@@ -249,7 +249,7 @@ async function renderSettings(content) {
 
   const tabGroups = {
     assets: { label: 'ครุภัณฑ์', icon: 'boxes', description: 'ประเภทและสถานะที่ใช้ในทะเบียนครุภัณฑ์', types: ['asset_categories', 'asset_statuses'] },
-    places: { label: 'สถานที่และหน่วยงาน', icon: 'map-pin', description: 'สถานที่ อาคาร ชั้น หน่วยงาน และผู้รับผิดชอบ', types: ['locations', 'departments', 'buildings', 'floors', 'assignees'] },
+    places: { label: 'สถานที่และหน่วยงาน', icon: 'map-pin', description: 'ผู้รับผิดชอบ สถานที่ อาคาร ชั้น และหน่วยงาน', types: ['assignees', 'locations', 'departments', 'buildings', 'floors'] },
     materials: { label: 'คลังวัสดุ', icon: 'warehouse', description: 'หมวดวัสดุ ประเภทหมึก และหน่วยนับ', types: ['material_categories', 'ink_types', 'material_units'] }
   };
   if (!tabGroups[settingsTab]) settingsTab = 'assets';
