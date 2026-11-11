@@ -18,6 +18,14 @@ const demoAssets = [
 let assets = loadDemoAssets();
 let session = null;
 let userRole = null;
+const defaultCatalogs = {
+  asset_categories: ['คอมพิวเตอร์', 'ไฟฟ้าและวิทยุ', 'โฆษณาและเผยแพร่', 'อื่น ๆ'], locations: [], departments: [], buildings: [], floors: [], assignees: [],
+  material_categories: ['วัสดุสำนักงาน', 'วัสดุคอมพิวเตอร์', 'อุปกรณ์โสตทัศนูปกรณ์', 'วัสดุทำความสะอาด'],
+  ink_types: ['หมึกอิงค์เจ็ท', 'หมึกเลเซอร์ (Toner)', 'ดรัม/ชุดสร้างภาพ', 'ตลับหมึก'], material_units: ['ชิ้น', 'กล่อง', 'ตลับ', 'ขวด', 'รีม', 'ม้วน', 'ชุด', 'เส้น']
+};
+let systemOptions = loadDemoSystemOptions();
+let catalogs = deriveCatalogs(systemOptions);
+let assetCategories = catalogs.asset_categories;
 let activeNav = 'ภาพรวม';
 let searchTerm = '';
 let categoryFilter = 'ทั้งหมด';
@@ -40,6 +48,60 @@ function loadDemoAssets() {
 }
 function saveDemoAssets() {
   if (!supabase) localStorage.setItem('bcn-ckr-demo-assets', JSON.stringify(assets));
+}
+function loadDemoSystemOptions() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('bcn-ckr-system-options') || 'null');
+    if (Array.isArray(saved)) return saved;
+  } catch { /* use defaults */ }
+  return Object.entries(defaultCatalogs).flatMap(([option_type, values]) => values.map((value, sort_order) => ({ id: `default-${option_type}-${sort_order}`, option_type, value, is_active: true, sort_order })));
+}
+function deriveCatalogs(options) {
+  return Object.fromEntries(Object.keys(defaultCatalogs).map(type => [type, options.filter(option => option.option_type === type && option.is_active !== false).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map(option => option.value)]));
+}
+function applySystemOptions() { catalogs = deriveCatalogs(systemOptions); assetCategories = catalogs.asset_categories; }
+function saveDemoSystemOptions() { if (!supabase) localStorage.setItem('bcn-ckr-system-options', JSON.stringify(systemOptions)); }
+async function loadSystemOptions() {
+  if (!supabase || !session?.user) { systemOptions = loadDemoSystemOptions(); applySystemOptions(); return; }
+  const { data, error } = await supabase.from('system_options').select('*').order('option_type').order('sort_order').order('value');
+  if (error) { toast(`โหลดค่าตั้งค่าไม่ได้: ${error.message}`, true); return; }
+  systemOptions = data || []; applySystemOptions();
+}
+const catalogGroups = [
+  ['asset_categories', 'ประเภทครุภัณฑ์', 'ใช้แบ่งหมวดในทะเบียนและสรุปภาพรวม'], ['locations', 'สถานที่ใช้งาน/จัดเก็บ', 'เช่น ห้องปฏิบัติการหรือห้องทำงาน'],
+  ['departments', 'หน่วยงาน', 'หน่วยงานเจ้าของหรือรับผิดชอบครุภัณฑ์'], ['buildings', 'อาคาร', 'ชื่ออาคารภายในวิทยาลัย'], ['floors', 'ชั้น', 'ชั้นหรือระดับของอาคาร'],
+  ['assignees', 'ผู้รับผิดชอบ', 'รายชื่อผู้ดูแลครุภัณฑ์'], ['material_categories', 'ประเภทวัสดุ', 'หมวดหมู่สำหรับคลังวัสดุ'],
+  ['ink_types', 'ประเภทของหมึก', 'เช่น หมึกอิงค์เจ็ท หมึกเลเซอร์ หรือดรัม'], ['material_units', 'หน่วยนับวัสดุ', 'เช่น ชิ้น กล่อง ตลับ หรือรีม']
+];
+function canManageSettings() { return !supabase || userRole === 'super_admin'; }
+async function addSystemOption(type, rawValue) {
+  const value = String(rawValue || '').trim().replace(/\s+/g, ' ');
+  if (!canManageSettings()) return toast('เฉพาะ Super Admin แก้ไขรายการตั้งค่าได้', true);
+  if (!value || value.length > 100) return toast('กรอกชื่อรายการไม่เกิน 100 ตัวอักษร', true);
+  const existing = systemOptions.find(option => option.option_type === type && option.value.toLocaleLowerCase() === value.toLocaleLowerCase());
+  if (existing?.is_active !== false) return toast('มีรายการนี้อยู่แล้ว', true);
+  if (existing) {
+    if (supabase && session?.user) { const { error } = await supabase.from('system_options').update({ is_active: true }).eq('id', existing.id); if (error) return toast(`เปิดใช้รายการไม่ได้: ${error.message}`, true); }
+    existing.is_active = true;
+  } else {
+    const record = { option_type: type, value, is_active: true, sort_order: Math.max(-1, ...systemOptions.filter(option => option.option_type === type).map(option => Number(option.sort_order) || 0)) + 1 };
+    if (supabase && session?.user) { const { data, error } = await supabase.from('system_options').insert({ ...record, created_by: session.user.id }).select().single(); if (error) return toast(`เพิ่มรายการไม่ได้: ${error.message}`, true); systemOptions.push(data); }
+    else systemOptions.push({ ...record, id: `local-${type}-${Date.now()}` });
+  }
+  saveDemoSystemOptions(); applySystemOptions(); renderApp(); toast('เพิ่มรายการตั้งค่าแล้ว');
+}
+async function toggleSystemOption(id, active) {
+  const option = systemOptions.find(item => String(item.id) === String(id)); if (!option || !canManageSettings()) return;
+  if (supabase && session?.user) { const { error } = await supabase.from('system_options').update({ is_active: active }).eq('id', id); if (error) return toast(`บันทึกไม่ได้: ${error.message}`, true); }
+  option.is_active = active; saveDemoSystemOptions(); applySystemOptions(); renderApp(); toast(active ? 'เปิดใช้รายการแล้ว' : 'ปิดใช้รายการแล้ว');
+}
+async function renderSettings(content) {
+  const canEdit = canManageSettings();
+  content.innerHTML = `<div class="page-heading"><div><span class="section-kicker">SYSTEM CONFIGURATION</span><h1>ตั้งค่าระบบ</h1><p>จัดการรายการที่ใช้เลือกในทะเบียนครุภัณฑ์และคลังวัสดุ</p></div><button class="button secondary" id="refresh-system-options">${icon('rotate-cw', 15)} รีเฟรช</button></div>${!canEdit ? '<div class="settings-readonly">สิทธิ์ผู้ดูข้อมูล · ติดต่อ Super Admin หากต้องการแก้ไขรายการ</div>' : ''}<section class="settings-grid">${catalogGroups.map(([type, title, description]) => `<article class="panel catalog-card"><div class="catalog-card-heading"><div><h3>${title}</h3><p>${description}</p></div><span class="catalog-count">${systemOptions.filter(option => option.option_type === type && option.is_active !== false).length} รายการ</span></div>${canEdit ? `<form class="catalog-add-form" data-option-type="${type}"><input name="value" maxlength="100" placeholder="เพิ่ม${title}" aria-label="เพิ่ม${title}" /><button type="submit" class="button primary">เพิ่ม</button></form>` : ''}<div class="catalog-option-list">${systemOptions.filter(option => option.option_type === type).map(option => `<div class="catalog-option ${option.is_active === false ? 'inactive' : ''}"><span>${escapeHtml(option.value)}</span>${canEdit ? `<button type="button" class="catalog-toggle" data-option-id="${escapeHtml(option.id)}" data-next-active="${option.is_active === false}" aria-label="${option.is_active === false ? 'เปิดใช้' : 'ปิดใช้'} ${escapeHtml(option.value)}">${option.is_active === false ? 'เปิดใช้' : 'ปิดใช้'}</button>` : ''}</div>`).join('') || '<span class="catalog-empty">ยังไม่มีรายการ · เพิ่มรายการด้านบน</span>'}</div></article>`).join('')}</section><p class="settings-footnote">การปิดใช้จะซ่อนรายการจากตัวเลือกใหม่ แต่ข้อมูลครุภัณฑ์และวัสดุเดิมยังคงอยู่</p>`;
+  content.querySelector('#refresh-system-options').addEventListener('click', async () => { await loadSystemOptions(); renderApp(); toast('อัปเดตรายการตั้งค่าแล้ว'); });
+  content.querySelectorAll('.catalog-add-form').forEach(form => form.addEventListener('submit', async event => { event.preventDefault(); await addSystemOption(form.dataset.optionType, new FormData(form).get('value')); }));
+  content.querySelectorAll('.catalog-toggle').forEach(button => button.addEventListener('click', () => toggleSystemOption(button.dataset.optionId, button.dataset.nextActive === 'true')));
+  renderIcons();
 }
 
 function renderLogin() {
@@ -73,7 +135,7 @@ function renderApp() {
   const name = session?.user?.email?.split('@')[0] || 'ผู้ดูแลระบบ';
   const firstChar = (name[0] || 'ผ').toUpperCase();
   document.querySelector('#app').innerHTML = `
-    <div class="app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}"><aside class="sidebar"><div class="brand-lockup"><div class="brand-mark"><img class="sidebar-logo" src="/ckr-logo.jpg" alt="ตราวิทยาลัยพยาบาลบรมราชชนนี จักรีรัช" /></div><div class="brand-copy"><strong>คลังข้อมูลครุภัณฑ์</strong><small>CKR DATA CENTER</small></div><button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-label="${sidebarCollapsed ? 'ขยายแถบเมนู' : 'ย่อแถบเมนู'}" title="${sidebarCollapsed ? 'ขยายแถบเมนู' : 'ย่อแถบเมนู'}">${icon(sidebarCollapsed ? 'panel-left-open' : 'panel-left-close', 17)}</button></div><div class="nav-label">เมนูหลัก</div><nav class="nav-list"><button data-view="dashboard" class="nav-item ${view === 'dashboard' ? 'active' : ''}">${icon('layout-dashboard')}<span>ภาพรวม</span></button><div class="nav-tree-group"><button data-view="assets" class="nav-item nav-parent ${view === 'assets' ? 'active' : ''}">${icon('package-search')}<span>ทะเบียนครุภัณฑ์</span><span class="nav-count">${assets.length}</span></button><button id="registry-menu-toggle" class="nav-tree-toggle" type="button" aria-label="${registryMenuExpanded ? 'ย่อเมนูย่อยทะเบียนครุภัณฑ์' : 'ขยายเมนูย่อยทะเบียนครุภัณฑ์'}" aria-expanded="${registryMenuExpanded}" aria-controls="registry-submenu">${icon(registryMenuExpanded ? 'chevron-down' : 'chevron-right', 15)}</button></div><div id="registry-submenu" class="nav-subtree ${registryMenuExpanded ? '' : 'collapsed'}" aria-label="ทะเบียนครุภัณฑ์แยกตามหมวดหมู่">${assetCategories.slice(0, 3).map((category, index) => `<button data-category="${escapeHtml(category)}" class="nav-subitem ${view === 'assets' && categoryFilter === category ? 'active' : ''}" title="ครุภัณฑ์${escapeHtml(category)}"><span class="nav-subicon">${icon(['monitor', 'plug-zap', 'presentation'][index], 16)}</span><span>ครุภัณฑ์${escapeHtml(category)}</span><small>${assets.filter(asset => asset.category === category).length}</small></button>`).join('')}</div><button data-view="materials" class="nav-item ${view === 'materials' ? 'active' : ''}">${icon('warehouse')}<span>คลังวัสดุ</span><span class="nav-pip"></span></button><button data-view="reports" class="nav-item ${view === 'reports' ? 'active' : ''}">${icon('chart-no-axes-combined')}<span>รายงาน</span></button></nav><div class="nav-label nav-label-spaced">จัดการข้อมูล</div><nav class="nav-list"><button data-view="locations" class="nav-item">${icon('map-pin')}<span>สถานที่จัดเก็บ</span></button><button data-view="people" class="nav-item">${icon('users-round')}<span>ผู้รับผิดชอบ</span></button><button data-view="settings" class="nav-item">${icon('settings-2')}<span>ตั้งค่าระบบ</span></button>${userRole === 'super_admin' ? `<button data-view="users" class="nav-item ${view === 'users' ? 'active' : ''}">${icon('shield-user')}<span>กำหนดสิทธิ์ผู้ใช้</span></button>` : ''}</nav></aside>
+    <div class="app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}"><aside class="sidebar"><div class="brand-lockup"><div class="brand-mark"><img class="sidebar-logo" src="/ckr-logo.jpg" alt="ตราวิทยาลัยพยาบาลบรมราชชนนี จักรีรัช" /></div><div class="brand-copy"><strong>คลังข้อมูลครุภัณฑ์</strong><small>CKR DATA CENTER</small></div><button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-label="${sidebarCollapsed ? 'ขยายแถบเมนู' : 'ย่อแถบเมนู'}" title="${sidebarCollapsed ? 'ขยายแถบเมนู' : 'ย่อแถบเมนู'}">${icon(sidebarCollapsed ? 'panel-left-open' : 'panel-left-close', 17)}</button></div><div class="nav-label">เมนูหลัก</div><nav class="nav-list"><button data-view="dashboard" class="nav-item ${view === 'dashboard' ? 'active' : ''}">${icon('layout-dashboard')}<span>ภาพรวม</span></button><div class="nav-tree-group"><button data-view="assets" class="nav-item nav-parent ${view === 'assets' ? 'active' : ''}">${icon('package-search')}<span>ทะเบียนครุภัณฑ์</span><span class="nav-count">${assets.length}</span></button><button id="registry-menu-toggle" class="nav-tree-toggle" type="button" aria-label="${registryMenuExpanded ? 'ย่อเมนูย่อยทะเบียนครุภัณฑ์' : 'ขยายเมนูย่อยทะเบียนครุภัณฑ์'}" aria-expanded="${registryMenuExpanded}" aria-controls="registry-submenu">${icon(registryMenuExpanded ? 'chevron-down' : 'chevron-right', 15)}</button></div><div id="registry-submenu" class="nav-subtree ${registryMenuExpanded ? '' : 'collapsed'}" aria-label="ทะเบียนครุภัณฑ์แยกตามหมวดหมู่">${assetCategories.map(category => `<button data-category="${escapeHtml(category)}" class="nav-subitem ${view === 'assets' && categoryFilter === category ? 'active' : ''}" title="ครุภัณฑ์${escapeHtml(category)}"><span class="nav-subicon">${icon(categoryIcon(category), 16)}</span><span>ครุภัณฑ์${escapeHtml(category)}</span><small>${assets.filter(asset => asset.category === category).length}</small></button>`).join('')}</div><button data-view="materials" class="nav-item ${view === 'materials' ? 'active' : ''}">${icon('warehouse')}<span>คลังวัสดุ</span><span class="nav-pip"></span></button><button data-view="reports" class="nav-item ${view === 'reports' ? 'active' : ''}">${icon('chart-no-axes-combined')}<span>รายงาน</span></button></nav><div class="nav-label nav-label-spaced">จัดการข้อมูล</div><nav class="nav-list"><button data-view="locations" class="nav-item">${icon('map-pin')}<span>สถานที่จัดเก็บ</span></button><button data-view="people" class="nav-item">${icon('users-round')}<span>ผู้รับผิดชอบ</span></button><button data-view="settings" class="nav-item ${view === 'settings' ? 'active' : ''}">${icon('settings-2')}<span>ตั้งค่าระบบ</span></button>${userRole === 'super_admin' ? `<button data-view="users" class="nav-item ${view === 'users' ? 'active' : ''}">${icon('shield-user')}<span>กำหนดสิทธิ์ผู้ใช้</span></button>` : ''}</nav></aside>
     <main class="main-panel"><header class="topbar"><div class="crumbs"><span>ภาพรวม</span>${icon('chevron-right', 14)}<strong>${escapeHtml(activeNav)}</strong></div><div class="top-actions"><button class="icon-button" id="notifications" aria-label="การแจ้งเตือน">${icon('bell', 18)}<span class="notification-dot"></span></button><div class="top-divider"></div><button class="top-user" id="logout-button" title="ออกจากระบบ" aria-label="ออกจากระบบ ${escapeHtml(name)}"><div class="avatar small">${escapeHtml(firstChar)}</div><span>${escapeHtml(name)}</span>${icon('log-out', 15)}</button></div></header><div class="content" id="content"></div></main></div>`;
   document.querySelectorAll('.nav-item').forEach(button => { button.title = button.querySelector('span')?.textContent || ''; button.addEventListener('click', () => { if (button.classList.contains('nav-parent')) { registryMenuExpanded = !registryMenuExpanded; localStorage.setItem('bcn-ckr-registry-menu-expanded', String(registryMenuExpanded)); renderApp(); return; } view = button.dataset.view; activeNav = button.querySelector('span').textContent; if (view === 'assets') categoryFilter = 'ทั้งหมด'; if (view === 'dashboard') categoryFilter = 'ทั้งหมด'; renderApp(); }); });
   document.querySelector('#registry-menu-toggle').addEventListener('click', () => { registryMenuExpanded = !registryMenuExpanded; localStorage.setItem('bcn-ckr-registry-menu-expanded', String(registryMenuExpanded)); renderApp(); });
@@ -86,7 +148,6 @@ function renderApp() {
 
 function statusClass(status) { return ['ใช้งานปกติ', 'กำลังใช้งาน', 'พร้อมใช้งาน', 'เครื่องสำรอง'].includes(status) ? 'good' : ['รอซ่อม', 'ส่งซ่อม', 'ซ่อมบำรุง', 'รอแทงจำหน่าย', 'รอจำหน่าย'].includes(status) ? 'warning' : ['ใกล้ครบอายุ'].includes(status) ? 'purple' : 'muted'; }
 function categoryIcon(category) { return ['คอมพิวเตอร์'].includes(category) ? 'monitor' : ['ไฟฟ้าและวิทยุ'].includes(category) ? 'plug-zap' : ['โฆษณาและเผยแพร่'].includes(category) ? 'presentation' : category === 'อุปกรณ์เครือข่าย' ? 'router' : category === 'ซอฟต์แวร์' ? 'app-window' : 'printer'; }
-const assetCategories = ['คอมพิวเตอร์', 'ไฟฟ้าและวิทยุ', 'โฆษณาและเผยแพร่', 'อื่น ๆ'];
 const statusMetrics = [
   { name: 'พร้อมใช้งาน', icon: 'badge-check', tone: 'mint', matches: ['พร้อมใช้งาน'] },
   { name: 'กำลังใช้งาน', icon: 'monitor-check', tone: 'blue', matches: ['กำลังใช้งาน', 'ใช้งานปกติ'] },
@@ -97,6 +158,7 @@ const statusMetrics = [
 ];
 function statusCount(metric) { return assets.filter(asset => metric.matches.includes(asset.status)).length; }
 function categoryCount(name) { return assets.filter(asset => asset.category === name).length; }
+function datalistOptions(id, values) { return `<datalist id="${id}">${(values || []).map(value => `<option value="${escapeHtml(value)}"></option>`).join('')}</datalist>`; }
 function fiscalYear(asset) {
   if (Number(asset.fiscal_year)) return Number(asset.fiscal_year);
   const received = asset.received_date || asset.purchase_date;
@@ -142,7 +204,8 @@ function renderDashboardCharts() {
 function renderContent() {
   const content = document.querySelector('#content');
   if (view === 'users') { renderUserAccess(content); return; }
-  if (view === 'materials') { renderMaterialsPage({ content, supabase, session, userRole, icon, renderIcons, toast, escapeHtml }); return; }
+  if (view === 'settings') { renderSettings(content); return; }
+  if (view === 'materials') { renderMaterialsPage({ content, supabase, session, userRole, catalogs, icon, renderIcons, toast, escapeHtml }); return; }
   if (view !== 'dashboard' && view !== 'assets') { content.innerHTML = `<div class="page-heading"><div><span class="section-kicker">WORKSPACE</span><h1>${escapeHtml(activeNav)}</h1><p>ส่วนนี้เตรียมไว้สำหรับการจัดการ${escapeHtml(activeNav)}ในขั้นถัดไป</p></div></div><div class="empty-module">${icon('layers-3', 28)}<strong>กำลังเตรียมพื้นที่ทำงาน</strong><span>ข้อมูลทะเบียนครุภัณฑ์และภาพรวมพร้อมใช้งานแล้ว</span><button class="button secondary" id="go-assets">ไปที่ทะเบียนครุภัณฑ์ ${icon('arrow-right', 15)}</button></div>`; document.querySelector('#go-assets').addEventListener('click', () => { view = 'assets'; activeNav = 'ทะเบียนครุภัณฑ์'; renderApp(); }); renderIcons(); return; }
   const scopedAssets = view === 'assets' && categoryFilter !== 'ทั้งหมด' ? assets.filter(asset => asset.category === categoryFilter) : assets;
   const total = scopedAssets.length;
@@ -152,7 +215,7 @@ function renderContent() {
   const pageTitle = view === 'dashboard' ? 'ภาพรวมครุภัณฑ์' : categoryFilter === 'ทั้งหมด' ? 'ทะเบียนครุภัณฑ์' : `ทะเบียนครุภัณฑ์ · ครุภัณฑ์${escapeHtml(categoryFilter)}`;
   content.innerHTML = `<div class="page-heading"><div><h1>${pageTitle}</h1><p>ติดตามสถานะครุภัณฑ์ของวิทยาลัยพยาบาลบรมราชชนนี จักรีรัชได้ในภาพเดียว</p></div>${view === 'assets' ? `<div class="heading-actions">${canManageAssets() ? `<button id="import-assets" class="button secondary">${icon('file-up', 16)} นำเข้า CSV</button><button id="asset-csv-template" class="button secondary">${icon('file-down', 16)} แบบฟอร์ม CSV</button>` : ''}<button id="export-button" class="button secondary">${icon('download', 16)} ส่งออกรายงาน</button>${canManageAssets() ? `<button id="add-asset" class="button primary">${icon('plus', 17)} เพิ่มครุภัณฑ์</button><input id="asset-import-file" type="file" accept=".csv,text/csv" hidden />` : ''}</div>` : ''}</div>
   ${view === 'dashboard' ? `<section class="welcome-banner"><div class="welcome-text"><div class="welcome-tag">${icon('sparkles', 14)} YOUR ASSET COMMAND CENTER</div><h2>ทุกสินทรัพย์ <span>พร้อมจัดการ</span></h2><p>ภาพรวมข้อมูลครุภัณฑ์งานเทคโนโลยีสารสนเทศ ประจำวิทยาลัย</p><button id="view-all" class="welcome-link">ดูทะเบียนครุภัณฑ์ทั้งหมด ${icon('arrow-right', 15)}</button></div><div class="banner-visual"><div class="visual-orbit orbit-one"></div><div class="visual-orbit orbit-two"></div><div class="visual-core">${icon('boxes', 34)}</div><div class="float-chip chip-a">${icon('monitor', 15)} ${total} รายการ</div><div class="float-chip chip-b">${icon('shield-check', 15)} พร้อมใช้งาน</div><div class="visual-sparkle sparkle-a">✳</div><div class="visual-sparkle sparkle-b">✦</div></div></section>` : ''}
-  <section class="metric-grid category-metrics ${view === 'dashboard' ? 'dashboard-premium-category' : ''} ${categoryFilter === 'ทั้งหมด' ? '' : 'category-summary-single'}" aria-label="สถิติตามประเภทครุภัณฑ์"><article class="metric-card ${categoryFilter === 'ทั้งหมด' ? '' : 'premium-total-card'}"><div class="metric-top"><span>${categoryFilter === 'ทั้งหมด' ? 'ครุภัณฑ์ทั้งหมด' : `ครุภัณฑ์${escapeHtml(categoryFilter)}`}</span><div class="metric-icon violet">${icon('boxes', 19)}</div></div><div class="metric-value">${total}<small>รายการ</small></div><div class="metric-foot"><span>${categoryFilter === 'ทั้งหมด' ? 'ทุกประเภท' : 'จำนวนครุภัณฑ์ในหมวดนี้'}</span></div></article>${categoryFilter === 'ทั้งหมด' ? assetCategories.slice(0, 3).map((category, index) => `<article class="metric-card"><div class="metric-top"><span>ครุภัณฑ์${category}</span><div class="metric-icon ${['blue', 'amber', 'mint'][index]}">${icon(index === 0 ? 'monitor' : index === 1 ? 'plug-zap' : 'presentation', 19)}</div></div><div class="metric-value">${scopedCategoryCount(category)}<small>รายการ</small></div><div class="metric-foot"><span>${total ? Math.round(scopedCategoryCount(category) / total * 100) : 0}% ของครุภัณฑ์ทั้งหมด</span></div></article>`).join('') : statusCards}</section>
+  <section class="metric-grid category-metrics ${view === 'dashboard' ? 'dashboard-premium-category' : ''} ${categoryFilter === 'ทั้งหมด' ? '' : 'category-summary-single'}" aria-label="สถิติตามประเภทครุภัณฑ์"><article class="metric-card ${categoryFilter === 'ทั้งหมด' ? '' : 'premium-total-card'}"><div class="metric-top"><span>${categoryFilter === 'ทั้งหมด' ? 'ครุภัณฑ์ทั้งหมด' : `ครุภัณฑ์${escapeHtml(categoryFilter)}`}</span><div class="metric-icon violet">${icon('boxes', 19)}</div></div><div class="metric-value">${total}<small>รายการ</small></div><div class="metric-foot"><span>${categoryFilter === 'ทั้งหมด' ? 'ทุกประเภท' : 'จำนวนครุภัณฑ์ในหมวดนี้'}</span></div></article>${categoryFilter === 'ทั้งหมด' ? assetCategories.map((category, index) => `<article class="metric-card"><div class="metric-top"><span>ครุภัณฑ์${escapeHtml(category)}</span><div class="metric-icon ${['blue', 'amber', 'mint', 'violet'][index % 4]}">${icon(categoryIcon(category), 19)}</div></div><div class="metric-value">${scopedCategoryCount(category)}<small>รายการ</small></div><div class="metric-foot"><span>${total ? Math.round(scopedCategoryCount(category) / total * 100) : 0}% ของครุภัณฑ์ทั้งหมด</span></div></article>`).join('') : statusCards}</section>
   ${categoryFilter === 'ทั้งหมด' ? `<section class="metric-grid status-metrics ${view === 'dashboard' ? 'dashboard-premium-status' : ''}" aria-label="สถิติตามสถานะครุภัณฑ์">${statusCards}</section>` : ''}
   ${view === 'dashboard' ? renderDashboardCharts() : ''}
   <section class="panel asset-panel"><div class="asset-panel-head"><div><h3>${view === 'dashboard' ? 'รายการครุภัณฑ์ทั้งหมด' : categoryFilter === 'ทั้งหมด' ? 'รายการครุภัณฑ์' : `รายการครุภัณฑ์${escapeHtml(categoryFilter)}`}</h3><p>ทะเบียนครุภัณฑ์งานเทคโนโลยีสารสนเทศ</p></div><button class="view-all" id="view-all-assets">ดูทั้งหมด ${icon('arrow-right', 14)}</button></div><div class="table-toolbar"><div class="search-box">${icon('search', 16)}<input id="asset-search" placeholder="ค้นหาชื่อ, รหัสครุภัณฑ์..." value="${escapeHtml(searchTerm)}"/><kbd>⌘ K</kbd></div><div class="filters"><select id="category-filter"><option value="ทั้งหมด">ทั้งหมด</option>${[...new Set([...assetCategories, ...assets.map(a => a.category)])].map(c => `<option value="${escapeHtml(c)}" ${categoryFilter === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select><select id="status-filter"><option>ทั้งหมด</option>${[...new Set(assets.map(a => a.status))].map(s => `<option ${statusFilter === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('')}</select><button class="filter-button" id="refresh-button">${icon('rotate-cw', 15)} รีเฟรช</button></div></div><div class="table-scroll"><table><thead><tr><th>รหัส / รายการ</th><th>หมวดหมู่</th><th>สถานที่จัดเก็บ</th><th>ผู้รับผิดชอบ</th><th>สถานะ</th><th>ราคาจัดซื้อ</th><th></th></tr></thead><tbody id="asset-rows">${tableRows()}</tbody></table></div><div class="table-bottom"><span>แสดง <strong id="row-count">${filteredAssets().length}</strong> จาก ${total} รายการ</span><div class="pagination"><button disabled>${icon('chevron-left', 15)}</button><button class="current-page">1</button><button disabled>2</button><button disabled>3</button><span>…</span><button disabled>12</button><button disabled>${icon('chevron-right', 15)}</button></div></div></section><footer class="app-footer"><span class="app-legal">© 2026 วิทยาลัยพยาบาลบรมราชชนนี จักรีรัช · คณะพยาบาลศาสตร์ สถาบันพระบรมราชชนก</span><span>BCN CKR IT ASSET SYSTEM <i class="footer-dot"></i> v0.1.0</span></footer>`;
@@ -205,11 +268,11 @@ function openAssetModal() {
     '<div class="field">' + fieldLabel('tags', 'ประเภท', 'amber') + '<select name="category">' + categories + '</select></div>' +
     '<div class="field">' + fieldLabel('calendar-days', 'วันที่ได้รับ', 'blue') + '<input name="received_date" type="date" /></div>' +
     '<div class="field">' + fieldLabel('calendar-range', 'ปีงบประมาณ', 'violet') + '<input name="fiscal_year" type="number" min="2500" max="3000" placeholder="เช่น 2569" /></div>' +
-    '<div class="field">' + fieldLabel('map-pin', 'สถานที่', 'mint') + '<input name="location" placeholder="เช่น ห้องปฏิบัติการ" /></div>' +
-    '<div class="field">' + fieldLabel('landmark', 'หน่วยงาน', 'teal') + '<input name="department" placeholder="หน่วยงานที่รับผิดชอบ" /></div>' +
-    '<div class="field">' + fieldLabel('layers', 'ชั้น', 'blue') + '<input name="floor" placeholder="เช่น ชั้น 2" /></div>' +
-    '<div class="field">' + fieldLabel('building', 'อาคาร', 'amber') + '<input name="building" placeholder="เช่น อาคาร 1" /></div>' +
-    '<div class="field">' + fieldLabel('user-round', 'ผู้รับผิดชอบ', 'violet') + '<input name="assignee" placeholder="ชื่อผู้รับผิดชอบ" /></div>' +
+    '<div class="field">' + fieldLabel('map-pin', 'สถานที่', 'mint') + '<input name="location" list="asset-location-options" placeholder="เช่น ห้องปฏิบัติการ" />' + datalistOptions('asset-location-options', catalogs.locations) + '</div>' +
+    '<div class="field">' + fieldLabel('landmark', 'หน่วยงาน', 'teal') + '<input name="department" list="asset-department-options" placeholder="หน่วยงานที่รับผิดชอบ" />' + datalistOptions('asset-department-options', catalogs.departments) + '</div>' +
+    '<div class="field">' + fieldLabel('layers', 'ชั้น', 'blue') + '<input name="floor" list="asset-floor-options" placeholder="เช่น ชั้น 2" />' + datalistOptions('asset-floor-options', catalogs.floors) + '</div>' +
+    '<div class="field">' + fieldLabel('building', 'อาคาร', 'amber') + '<input name="building" list="asset-building-options" placeholder="เช่น อาคาร 1" />' + datalistOptions('asset-building-options', catalogs.buildings) + '</div>' +
+    '<div class="field">' + fieldLabel('user-round', 'ผู้รับผิดชอบ', 'violet') + '<input name="assignee" list="asset-assignee-options" placeholder="ชื่อผู้รับผิดชอบ" />' + datalistOptions('asset-assignee-options', catalogs.assignees) + '</div>' +
     '<div class="field">' + fieldLabel('shield-check', 'สถานะ', 'mint') + '<select name="status">' + statuses + '</select></div>' +
     '<div class="field image-field">' + fieldLabel('image', 'ภาพอุปกรณ์ (สูงสุด 2 ภาพ)') + '<div class="image-actions"><button type="button" class="image-action image-action-camera" id="take-asset-photo">ถ่ายรูปใหม่</button><button type="button" class="image-action" id="choose-asset-image">เลือกจากเครื่อง</button></div><input id="asset-image" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden /><input id="asset-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden /><div id="asset-image-preview" class="asset-image-preview" tabindex="0"><span>วางรูปภาพด้วย Ctrl+V หรือเลือกรูป JPG, PNG, WebP ไม่เกิน 10 MB</span></div><small>เลือกรูปได้ 1–2 ภาพ · จัดเก็บแยกตามหมวดหมู่และเลขครุภัณฑ์</small></div>' +
     '</div><details class="optional-asset-details"><summary>ข้อมูลเพิ่มเติม</summary><div class="form-grid">' +
@@ -396,14 +459,14 @@ async function renderUserAccess(content) {
 
 async function initializeSession(nextSession) {
   session = nextSession; userRole = null;
-  if (!session) { assets = loadDemoAssets(); view = 'dashboard'; renderLogin(); return; }
+  if (!session) { assets = loadDemoAssets(); systemOptions = loadDemoSystemOptions(); applySystemOptions(); view = 'dashboard'; renderLogin(); return; }
   const { data, error } = await supabase.from('user_roles').select('role').eq('user_id', session.user.id).single();
   if (error || !data) { await supabase.auth.signOut(); session = null; renderLogin(); notifyLogin('บัญชีนี้ยังไม่ได้รับสิทธิ์เข้าระบบ โปรดติดต่อ Super Admin', true); return; }
-  userRole = data.role; await loadAssets(); renderApp();
+  userRole = data.role; await Promise.all([loadAssets(), loadSystemOptions()]); renderApp();
 }
 
 async function loadAssets() { if (!supabase || !session?.user) return; const { data, error } = await supabase.from('it_assets').select('*').order('created_at', { ascending: false }).limit(500); if (!error && data) assets = data; else if (error) toast(`โหลดข้อมูลไม่ได้: ${error.message}`, true); }
-async function signOut() { if (supabase) await supabase.auth.signOut(); session = null; userRole = null; assets = loadDemoAssets(); view = 'dashboard'; renderLogin(); }
+async function signOut() { if (supabase) await supabase.auth.signOut(); session = null; userRole = null; assets = loadDemoAssets(); systemOptions = loadDemoSystemOptions(); applySystemOptions(); view = 'dashboard'; renderLogin(); }
 let toastTimer; function toast(message, error = false) { let el = document.querySelector('.toast'); if (!el) { el = document.createElement('div'); el.className = 'toast'; document.body.append(el); } el.className = `toast ${error ? 'toast-error' : ''}`; el.innerHTML = `${icon(error ? 'circle-alert' : 'circle-check', 17)}<span>${escapeHtml(message)}</span>`; renderIcons(); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.remove(), 3000); }
 
 async function boot() { if (supabase) { const { data: { session: savedSession } } = await supabase.auth.getSession(); supabase.auth.onAuthStateChange((_event, nextSession) => { setTimeout(() => initializeSession(nextSession), 0); }); if (savedSession) { await initializeSession(savedSession); return; } } renderLogin(); }

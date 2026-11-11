@@ -6,6 +6,7 @@ create table if not exists public.inventory_materials (
   sku text not null unique,
   name text not null,
   category text not null,
+  ink_type text,
   unit text not null default 'ชิ้น',
   quantity numeric(14,3) not null default 0 check (quantity >= 0),
   minimum_quantity numeric(14,3) not null default 0 check (minimum_quantity >= 0),
