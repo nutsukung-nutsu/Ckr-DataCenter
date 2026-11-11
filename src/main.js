@@ -495,7 +495,7 @@ function openAssetModal() {
       record.image_path = record.image_paths[0] || null;
     }
     if (supabase && session?.user) {
-      const { data, error } = await supabase.from('it_assets').upsert({ ...record, created_by: session.user.id }, { onConflict: 'option_type,value' }).select().single();
+      const { data, error } = await supabase.from('it_assets').insert({ ...record, created_by: session.user.id }).select().single();
       if (error) { toast('บันทึกไม่สำเร็จ: ' + error.message, true); saveButton.disabled = false; saveButton.textContent = 'บันทึกครุภัณฑ์'; return; }
       assets.unshift(data);
     } else { if (files.length) toast('โหมดตัวอย่างไม่สามารถจัดเก็บภาพถาวรได้', true); assets.unshift({ ...record, id: 'local-' + Date.now() }); }
