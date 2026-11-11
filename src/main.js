@@ -127,6 +127,7 @@ async function addSystemOption(type, rawValue, departmentId = null, assigneeType
 }
 const catalogCsvTypes = new Set(['locations', 'departments', 'buildings', 'floors', 'assignees']);
 const serviceHealth = { cloudflare: null, github: null, supabase: null, checkedAt: null };
+let serviceHealthTimer = null;
 async function checkServiceHealth() {
   const checks = [
     ['cloudflare', 'https://www.cloudflarestatus.com/api/v2/status.json'],
@@ -149,9 +150,10 @@ async function checkServiceHealth() {
   }
   serviceHealth.checkedAt = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 }
-function serviceHealthHtml() {
-  const providers = [['cloudflare', 'Cloudflare'], ['github', 'GitHub'], ['supabase', 'Supabase']];
-  return `<section class="panel service-health"><div class="catalog-card-heading"><div><h3>สถานะการเชื่อมต่อ</h3><p>ตรวจสุขภาพบริการที่ระบบใช้งาน</p></div><button type="button" class="button secondary" id="check-services">${icon('rotate-cw', 15)} ตรวจสอบอีกครั้ง</button></div><div class="service-health-grid">${providers.map(([key, label]) => { const status = serviceHealth[key]; return `<div class="service-health-item ${status ? status.ok ? 'healthy' : 'unhealthy' : 'pending'}"><span class="health-dot"></span><div><strong>${label}</strong><small>${escapeHtml(status?.label || 'ยังไม่ได้ตรวจสอบ')}</small></div><b>${status ? status.ok ? 'ปกติ' : 'ขัดข้อง' : 'รอตรวจ'}</b></div>`; }).join('')}</div><small class="health-checked">${serviceHealth.checkedAt ? `ตรวจล่าสุด ${serviceHealth.checkedAt} น.` : 'สถานะ Cloudflare/GitHub อ้างอิงหน้า platform status สาธารณะ'}</small></section>`;
+function startBackgroundServiceHealthChecks() {
+  if (serviceHealthTimer) return;
+  void checkServiceHealth();
+  serviceHealthTimer = window.setInterval(() => { void checkServiceHealth(); }, 5 * 60 * 1000);
 }
 function parseCatalogCsv(text) {
   const rows = []; let row = [], cell = '', quoted = false;
@@ -324,9 +326,7 @@ async function renderSettings(content) {
     }
     return `<article class="panel catalog-card"><div class="catalog-card-heading"><div><h3>${title}</h3><p>${description}</p></div><span class="catalog-count">${options.filter(option => option.is_active !== false).length} รายการ</span></div>${canEdit ? `<form class="catalog-add-form" data-option-type="${type}"><input name="value" maxlength="100" placeholder="เพิ่ม${title}" aria-label="เพิ่ม${title}" /><button type="submit" class="button primary">เพิ่ม</button></form>` : ''}${catalogCsvTypes.has(type) && canImportCatalog(type) ? `<div class="catalog-import-tools"><button type="button" class="catalog-import-button" data-import-type="${type}">${icon('file-up', 15)} นำเข้า CSV</button><button type="button" class="catalog-template-button" data-template-type="${type}">${icon('file-down', 15)} แบบฟอร์ม CSV</button><input type="file" accept=".csv,text/csv" data-catalog-file="${type}" hidden /></div>` : ''}<div class="catalog-option-list">${options.map(optionRow).join('') || '<span class="catalog-empty">ยังไม่มีรายการ · เพิ่มรายการด้านบน</span>'}</div></article>`;
   };
-  content.innerHTML = `<div class="page-heading"><div><span class="section-kicker">SYSTEM CONFIGURATION</span><h1>ตั้งค่าระบบ</h1><p>จัดการตัวเลือกทะเบียนครุภัณฑ์และคลังวัสดุ แยกตามหมวดเพื่อค้นหาได้ง่าย</p></div><button class="button secondary" id="refresh-system-options">${icon('rotate-cw', 15)} รีเฟรช</button></div>${serviceHealthHtml()}${!canEdit ? `<div class="settings-readonly">${canImportAssignees() ? 'สิทธิ์ผู้จัดการครุภัณฑ์ · นำเข้า CSV รายชื่อผู้รับผิดชอบได้' : 'สิทธิ์ผู้ดูข้อมูล · ติดต่อ Super Admin หากต้องการแก้ไขรายการ'}</div>` : ''}<nav class="settings-tabs" role="tablist" aria-label="หมวดตั้งค่าระบบ">${Object.entries(tabGroups).map(([key, tab]) => `<button type="button" role="tab" aria-selected="${settingsTab === key}" class="settings-tab ${settingsTab === key ? 'active' : ''}" data-settings-tab="${key}">${icon(tab.icon, 17)}<span>${tab.label}</span><small>${tab.types.reduce((sum, type) => sum + systemOptions.filter(option => option.option_type === type && option.is_active !== false).length, 0)}</small></button>`).join('')}</nav><section class="settings-tab-intro"><div><strong>${tabGroups[settingsTab].label}</strong><span>${tabGroups[settingsTab].description}</span></div></section><section class="settings-grid">${tabGroups[settingsTab].types.map(cardHtml).join('')}</section><p class="settings-footnote">การลบจะนำรายการออกจากตัวเลือกใหม่ ข้อมูลครุภัณฑ์และวัสดุเดิมยังคงอยู่ · รายการที่มีข้อมูลอ้างอิงจะลบไม่ได้</p>`;
-  content.querySelector('#check-services').addEventListener('click', async event => { const button = event.currentTarget; button.disabled = true; button.textContent = 'กำลังตรวจสอบ…'; await checkServiceHealth(); renderApp(); });
-  if (!serviceHealth.checkedAt) { checkServiceHealth().then(() => { if (view === 'settings') renderApp(); }); }
+  content.innerHTML = `<div class="page-heading"><div><span class="section-kicker">SYSTEM CONFIGURATION</span><h1>ตั้งค่าระบบ</h1><p>จัดการตัวเลือกทะเบียนครุภัณฑ์และคลังวัสดุ แยกตามหมวดเพื่อค้นหาได้ง่าย</p></div><button class="button secondary" id="refresh-system-options">${icon('rotate-cw', 15)} รีเฟรช</button></div>${!canEdit ? `<div class="settings-readonly">${canImportAssignees() ? 'สิทธิ์ผู้จัดการครุภัณฑ์ · นำเข้า CSV รายชื่อผู้รับผิดชอบได้' : 'สิทธิ์ผู้ดูข้อมูล · ติดต่อ Super Admin หากต้องการแก้ไขรายการ'}</div>` : ''}<nav class="settings-tabs" role="tablist" aria-label="หมวดตั้งค่าระบบ">${Object.entries(tabGroups).map(([key, tab]) => `<button type="button" role="tab" aria-selected="${settingsTab === key}" class="settings-tab ${settingsTab === key ? 'active' : ''}" data-settings-tab="${key}">${icon(tab.icon, 17)}<span>${tab.label}</span><small>${tab.types.reduce((sum, type) => sum + systemOptions.filter(option => option.option_type === type && option.is_active !== false).length, 0)}</small></button>`).join('')}</nav><section class="settings-tab-intro"><div><strong>${tabGroups[settingsTab].label}</strong><span>${tabGroups[settingsTab].description}</span></div></section><section class="settings-grid">${tabGroups[settingsTab].types.map(cardHtml).join('')}</section><p class="settings-footnote">การลบจะนำรายการออกจากตัวเลือกใหม่ ข้อมูลครุภัณฑ์และวัสดุเดิมยังคงอยู่ · รายการที่มีข้อมูลอ้างอิงจะลบไม่ได้</p>`;
   content.querySelectorAll('[data-settings-tab]').forEach(button => button.addEventListener('click', () => { settingsTab = button.dataset.settingsTab; localStorage.setItem('bcn-ckr-settings-tab', settingsTab); renderApp(); }));
   content.querySelector('#refresh-system-options').addEventListener('click', async () => { await loadSystemOptions(); renderApp(); toast('อัปเดตรายการตั้งค่าแล้ว'); });
   content.querySelectorAll('.catalog-add-form').forEach(form => form.addEventListener('submit', async event => { event.preventDefault(); await addSystemOption(form.dataset.optionType, new FormData(form).get('value')); }));
@@ -751,6 +751,7 @@ async function renderUserAccess(content) {
 
 async function initializeSession(nextSession) {
   session = nextSession; userRole = null;
+  void checkServiceHealth();
   if (!session) { assets = loadDemoAssets(); systemOptions = loadDemoSystemOptions(); applySystemOptions(); view = 'dashboard'; renderLogin(); return; }
   const { data, error } = await supabase.from('user_roles').select('role').eq('user_id', session.user.id).single();
   if (error || !data) { await supabase.auth.signOut(); session = null; renderLogin(); notifyLogin('บัญชีนี้ยังไม่ได้รับสิทธิ์เข้าระบบ โปรดติดต่อ Super Admin', true); return; }
@@ -761,5 +762,5 @@ async function loadAssets() { if (!supabase || !session?.user) return; const { d
 async function signOut() { if (supabase) await supabase.auth.signOut(); session = null; userRole = null; assets = loadDemoAssets(); systemOptions = loadDemoSystemOptions(); applySystemOptions(); view = 'dashboard'; renderLogin(); }
 let toastTimer; function toast(message, error = false) { let el = document.querySelector('.toast'); if (!el) { el = document.createElement('div'); el.className = 'toast'; document.body.append(el); } el.className = `toast ${error ? 'toast-error' : ''}`; el.innerHTML = `${icon(error ? 'circle-alert' : 'circle-check', 17)}<span>${escapeHtml(message)}</span>`; renderIcons(); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.remove(), 3000); }
 
-async function boot() { if (supabase) { const { data: { session: savedSession } } = await supabase.auth.getSession(); supabase.auth.onAuthStateChange((_event, nextSession) => { setTimeout(() => initializeSession(nextSession), 0); }); if (savedSession) { await initializeSession(savedSession); return; } } renderLogin(); }
+async function boot() { startBackgroundServiceHealthChecks(); if (supabase) { const { data: { session: savedSession } } = await supabase.auth.getSession(); supabase.auth.onAuthStateChange((_event, nextSession) => { setTimeout(() => initializeSession(nextSession), 0); }); if (savedSession) { await initializeSession(savedSession); return; } } renderLogin(); }
 boot();
