@@ -114,7 +114,9 @@ drop policy if exists "Super admins can add system options" on public.system_opt
 create policy "Super admins can add system options" on public.system_options for insert to authenticated with check (public.has_access_role(array['super_admin']));
 drop policy if exists "Super admins can update system options" on public.system_options;
 create policy "Super admins can update system options" on public.system_options for update to authenticated using (public.has_access_role(array['super_admin'])) with check (public.has_access_role(array['super_admin']));
-grant select, insert, update on public.system_options to authenticated;
+drop policy if exists "Super admins can delete system options" on public.system_options;
+create policy "Super admins can delete system options" on public.system_options for delete to authenticated using (public.has_access_role(array['super_admin']));
+grant select, insert, update, delete on public.system_options to authenticated;
 
 insert into public.system_options(option_type, value, sort_order) values
 ('asset_categories','คอมพิวเตอร์',0),('asset_categories','ไฟฟ้าและวิทยุ',1),('asset_categories','โฆษณาและเผยแพร่',2),('asset_categories','อื่น ๆ',3),
