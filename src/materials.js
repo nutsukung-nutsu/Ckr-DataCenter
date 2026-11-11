@@ -15,6 +15,20 @@ function readLocal(key, fallback) {
   try { const value = JSON.parse(localStorage.getItem(key)); return Array.isArray(value) ? value : fallback; }
   catch { return fallback; }
 }
+function safePath(value) {
+  return String(value || '').normalize('NFKC').trim().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').slice(0, 80) || 'material';
+}
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file); });
+}
+async function loadMaterialImages(context) {
+  if (!context.supabase) return;
+  const images = [...document.querySelectorAll('.material-thumb[data-image-path]')];
+  await Promise.all(images.map(async image => {
+    const { data, error } = await context.supabase.storage.from('inventory-material-images').createSignedUrl(image.dataset.imagePath, 1800);
+    if (!error && data?.signedUrl && image.isConnected) image.src = data.signedUrl;
+  }));
+}
 function saveLocal() {
   localStorage.setItem(DEMO_KEY, JSON.stringify(materials));
   localStorage.setItem(MOVEMENT_KEY, JSON.stringify(movements));
@@ -65,7 +79,12 @@ export async function renderMaterialsPage(context) {
     const rows = visible.map(item => {
       const isLow = lowStock(item);
       const stockClass = Number(item.quantity) === 0 ? 'out' : isLow ? 'low' : 'good';
-      return `<tr><td><div class="material-name-cell"><span class="material-row-icon">${icon('package', 17)}</span><div><strong>${context.escapeHtml(item.name)}</strong><small>${context.escapeHtml(item.sku || 'ไม่มีรหัส')}</small></div></div></td><td><span class="category-chip">${context.escapeHtml(item.category)}</span></td><td><strong class="material-stock ${stockClass}">${amount(item.quantity)} <small>${context.escapeHtml(item.unit)}</small></strong><span class="material-minimum">ขั้นต่ำ ${amount(item.minimum_quantity)} ${context.escapeHtml(item.unit)}</span></td><td>${context.escapeHtml(item.location || '—')}</td><td><span class="stock-badge ${stockClass}">${Number(item.quantity) === 0 ? 'หมด' : isLow ? 'ใกล้หมด' : 'ปกติ'}</span></td><td>${stamp(item.updated_at || item.created_at)}</td><td><div class="material-row-actions">${canManage(context) ? `<button class="stock-action receive" data-movement="receive" data-id="${context.escapeHtml(item.id)}" title="รับวัสดุเข้า">${icon('plus', 15)} รับเข้า</button><button class="stock-action issue" data-movement="issue" data-id="${context.escapeHtml(item.id)}" title="เบิกวัสดุ">${icon('arrow-up-right', 15)} เบิก</button>` : '<span class="muted-note">ดูข้อมูล</span>'}</div></td></tr>`;
+      const thumbnail = item.image_data
+        ? `<img class="material-thumb" src="${context.escapeHtml(item.image_data)}" alt="ภาพ${context.escapeHtml(item.name)}" />`
+        : item.image_path
+          ? `<img class="material-thumb" data-image-path="${context.escapeHtml(item.image_path)}" alt="ภาพ${context.escapeHtml(item.name)}" />`
+          : icon('package', 17);
+      return `<tr><td><div class="material-name-cell"><span class="material-row-icon">${thumbnail}</span><div><strong>${context.escapeHtml(item.name)}</strong><small>${context.escapeHtml(item.sku || 'ไม่มีรหัส')}</small></div></div></td><td><span class="category-chip">${context.escapeHtml(item.category)}</span></td><td><strong class="material-stock ${stockClass}">${amount(item.quantity)} <small>${context.escapeHtml(item.unit)}</small></strong><span class="material-minimum">ขั้นต่ำ ${amount(item.minimum_quantity)} ${context.escapeHtml(item.unit)}</span></td><td>${context.escapeHtml(item.location || '—')}</td><td><span class="stock-badge ${stockClass}">${Number(item.quantity) === 0 ? 'หมด' : isLow ? 'ใกล้หมด' : 'ปกติ'}</span></td><td>${stamp(item.updated_at || item.created_at)}</td><td><div class="material-row-actions">${canManage(context) ? `<button class="stock-action receive" data-movement="receive" data-id="${context.escapeHtml(item.id)}" title="รับวัสดุเข้า">${icon('plus', 15)} รับเข้า</button><button class="stock-action issue" data-movement="issue" data-id="${context.escapeHtml(item.id)}" title="เบิกวัสดุ">${icon('arrow-up-right', 15)} เบิก</button>` : '<span class="muted-note">ดูข้อมูล</span>'}</div></td></tr>`;
     }).join('');
     const movementRows = movements.slice(0, 8).map(move => {
       const item = materials.find(row => String(row.id) === String(move.material_id));
@@ -81,6 +100,7 @@ export async function renderMaterialsPage(context) {
       <footer class="app-footer"><span class="app-legal">© 2026 วิทยาลัยพยาบาลบรมราชชนนี จักรีรัช · คณะพยาบาลศาสตร์ สถาบันพระบรมราชชนก</span><span>CKR DATA CENTER</span></footer>`;
     renderIcons();
     bindPageEvents();
+    loadMaterialImages(context);
   }
 
   function bindPageEvents() {
@@ -98,10 +118,24 @@ export async function renderMaterialsPage(context) {
 
   function openMaterialForm(seed = {}) {
     const modal = document.createElement('div'); modal.className = 'modal-backdrop';
-    modal.innerHTML = `<section class="asset-modal materials-modal"><div class="modal-head"><div><span class="section-kicker">MATERIALS REGISTRY</span><h2>เพิ่มวัสดุเข้าคลัง</h2></div><button class="icon-button" data-close aria-label="ปิด">${icon('x', 19)}</button></div><form><div class="form-grid"><div class="field"><label>รหัสวัสดุ</label><input name="sku" value="${context.escapeHtml(seed.sku || '')}" placeholder="เช่น MAT-001" /></div><div class="field"><label>ชื่อวัสดุ <b>*</b></label><input name="name" value="${context.escapeHtml(seed.name || '')}" required placeholder="ชื่อวัสดุหรืออุปกรณ์" /></div><div class="field"><label>หมวดหมู่ <b>*</b></label><input name="category" list="material-category-options" value="${context.escapeHtml(seed.category || '')}" required placeholder="เช่น วัสดุสำนักงาน" /><datalist id="material-category-options">${categoryNames().map(name => `<option value="${context.escapeHtml(name)}"></option>`).join('')}<option value="วัสดุสำนักงาน"><option value="วัสดุคอมพิวเตอร์"><option value="อุปกรณ์โสตทัศนูปกรณ์"><option value="วัสดุทำความสะอาด"></datalist></div><div class="field"><label>หน่วยนับ <b>*</b></label><input name="unit" value="${context.escapeHtml(seed.unit || 'ชิ้น')}" required placeholder="ชิ้น, กล่อง, รีม" /></div><div class="field"><label>จำนวนรับเข้าเริ่มต้น</label><input name="initial_quantity" type="number" min="0" step="0.001" value="${seed.initial_quantity ?? 0}" /></div><div class="field"><label>แจ้งเตือนเมื่อเหลือน้อยกว่า</label><input name="minimum_quantity" type="number" min="0" step="0.001" value="${seed.minimum_quantity ?? 0}" /></div><div class="field"><label>สถานที่จัดเก็บ</label><input name="location" value="${context.escapeHtml(seed.location || '')}" placeholder="เช่น ห้องคลังวัสดุ / ชั้นวาง A" /></div><div class="field"><label>รายละเอียด</label><input name="description" value="${context.escapeHtml(seed.description || '')}" placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)" /></div></div><div class="modal-actions"><button type="button" class="button secondary" data-close>ยกเลิก</button><button type="submit" class="button primary">${icon('plus', 16)} บันทึกวัสดุ</button></div></form></section>`;
+    modal.innerHTML = `<section class="asset-modal materials-modal"><div class="modal-head"><div><span class="section-kicker">MATERIALS REGISTRY</span><h2>เพิ่มวัสดุเข้าคลัง</h2></div><button class="icon-button" data-close aria-label="ปิด">${icon('x', 19)}</button></div><form><div class="form-grid"><div class="field"><label>รหัสวัสดุ</label><input name="sku" value="${context.escapeHtml(seed.sku || '')}" placeholder="เช่น MAT-001" /></div><div class="field"><label>ชื่อวัสดุ <b>*</b></label><input name="name" value="${context.escapeHtml(seed.name || '')}" required placeholder="ชื่อวัสดุหรืออุปกรณ์" /></div><div class="field"><label>หมวดหมู่ <b>*</b></label><input name="category" list="material-category-options" value="${context.escapeHtml(seed.category || '')}" required placeholder="เช่น วัสดุสำนักงาน" /><datalist id="material-category-options">${categoryNames().map(name => `<option value="${context.escapeHtml(name)}"></option>`).join('')}<option value="วัสดุสำนักงาน"><option value="วัสดุคอมพิวเตอร์"><option value="อุปกรณ์โสตทัศนูปกรณ์"><option value="วัสดุทำความสะอาด"></datalist></div><div class="field"><label>หน่วยนับ <b>*</b></label><input name="unit" value="${context.escapeHtml(seed.unit || 'ชิ้น')}" required placeholder="ชิ้น, กล่อง, รีม" /></div><div class="field"><label>จำนวนรับเข้าเริ่มต้น</label><input name="initial_quantity" type="number" min="0" step="0.001" value="${seed.initial_quantity ?? 0}" /></div><div class="field"><label>แจ้งเตือนเมื่อเหลือน้อยกว่า</label><input name="minimum_quantity" type="number" min="0" step="0.001" value="${seed.minimum_quantity ?? 0}" /></div><div class="field"><label>สถานที่จัดเก็บ</label><input name="location" value="${context.escapeHtml(seed.location || '')}" placeholder="เช่น ห้องคลังวัสดุ / ชั้นวาง A" /></div><div class="field"><label>รายละเอียด</label><input name="description" value="${context.escapeHtml(seed.description || '')}" placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)" /></div><div class="field material-image-field"><label><span class="field-icon teal">${icon('image', 14)}</span>ภาพวัสดุ</label><div class="image-actions"><button type="button" class="image-action image-action-camera" id="take-material-photo">${icon('camera', 16)} ถ่ายรูปใหม่</button><button type="button" class="image-action" id="choose-material-image">${icon('images', 16)} เลือกจากเครื่อง</button></div><input id="material-image" type="file" accept="image/jpeg,image/png,image/webp" hidden /><input id="material-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden /><div id="material-image-preview" class="asset-image-preview material-image-preview" tabindex="0"><span>${icon('clipboard', 15)} วางรูปด้วย Ctrl+V หรือเลือกรูป JPG, PNG, WebP ไม่เกิน 10 MB</span></div><small>จัดเก็บภาพไว้ในโฟลเดอร์ตามหมวดหมู่ของวัสดุ</small></div></div><div class="modal-actions"><button type="button" class="button secondary" data-close>ยกเลิก</button><button type="submit" class="button primary">${icon('plus', 16)} บันทึกวัสดุ</button></div></form></section>`;
     document.body.append(modal); renderIcons();
-    modal.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => modal.remove()));
-    modal.addEventListener('click', event => { if (event.target === modal) modal.remove(); });
+    const imageInput = modal.querySelector('#material-image'); const cameraInput = modal.querySelector('#material-camera');
+    const imagePreview = modal.querySelector('#material-image-preview'); let imageFile = null; let imagePreviewUrl = null;
+    const close = () => { modal.remove(); if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl); imagePreviewUrl = null; };
+    const setImage = file => {
+      if (!file) return;
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) return toast('เลือกรูป JPG, PNG หรือ WebP ขนาดไม่เกิน 10 MB', true);
+      if (!context.supabase && file.size > 2 * 1024 * 1024) return toast('โหมดตัวอย่างรองรับภาพไม่เกิน 2 MB · เชื่อมต่อ Supabase เพื่อใช้ภาพขนาดไม่เกิน 10 MB', true);
+      imageFile = file; if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
+      imagePreviewUrl = URL.createObjectURL(file); imagePreview.innerHTML = `<img alt="ตัวอย่างภาพวัสดุ" src="${imagePreviewUrl}" /><button type="button" class="material-image-remove" aria-label="นำภาพออก">${icon('x', 15)}</button>`;
+      renderIcons(); imagePreview.querySelector('.material-image-remove').addEventListener('click', () => { imageFile = null; URL.revokeObjectURL(imagePreviewUrl); imagePreviewUrl = null; imagePreview.innerHTML = `<span>${icon('clipboard', 15)} วางรูปด้วย Ctrl+V หรือเลือกรูป JPG, PNG, WebP ไม่เกิน 10 MB</span>`; renderIcons(); });
+    };
+    modal.querySelector('#choose-material-image').onclick = () => imageInput.click(); modal.querySelector('#take-material-photo').onclick = () => cameraInput.click();
+    imageInput.addEventListener('change', () => setImage(imageInput.files?.[0])); cameraInput.addEventListener('change', () => setImage(cameraInput.files?.[0]));
+    modal.addEventListener('paste', event => { const item = Array.from(event.clipboardData?.items || []).find(entry => entry.type.startsWith('image/')); const image = item?.getAsFile(); if (image) { event.preventDefault(); setImage(image); } });
+    modal.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', close));
+    modal.addEventListener('click', event => { if (event.target === modal) close(); });
     modal.querySelector('form').addEventListener('submit', async event => {
       event.preventDefault();
       const data = Object.fromEntries(new FormData(event.currentTarget));
@@ -109,21 +143,29 @@ export async function renderMaterialsPage(context) {
       const startQty = Number(data.initial_quantity) || 0;
       let startMovementFailed = false;
       const submit = event.currentTarget.querySelector('[type=submit]'); submit.disabled = true; submit.textContent = 'กำลังบันทึก…';
+      let imagePath = null; let localImage = null;
       if (context.supabase && context.session?.user) {
+        if (imageFile) {
+          const extension = imageFile.type === 'image/jpeg' ? 'jpg' : imageFile.type === 'image/png' ? 'png' : 'webp';
+          imagePath = `${safePath(material.category)}/${safePath(material.sku)}-${safePath(material.name)}-${Date.now()}.${extension}`;
+          const { error: uploadError } = await context.supabase.storage.from('inventory-material-images').upload(imagePath, imageFile, { contentType: imageFile.type, upsert: false });
+          if (uploadError) { submit.disabled = false; submit.innerHTML = `${icon('plus', 16)} บันทึกวัสดุ`; renderIcons(); return toast(`อัปโหลดภาพไม่สำเร็จ: ${uploadError.message}`, true); }
+        }
         const { quantity: _initialStock, ...newMaterial } = material;
-        const { data: created, error } = await context.supabase.from('inventory_materials').insert({ ...newMaterial, created_by: context.session.user.id }).select().single();
-        if (error) { submit.disabled = false; submit.innerHTML = `${icon('plus', 16)} บันทึกวัสดุ`; renderIcons(); return toast(`บันทึกวัสดุไม่สำเร็จ: ${error.message}`, true); }
+        const { data: created, error } = await context.supabase.from('inventory_materials').insert({ ...newMaterial, image_path: imagePath, created_by: context.session.user.id }).select().single();
+        if (error) { if (imagePath) await context.supabase.storage.from('inventory-material-images').remove([imagePath]); submit.disabled = false; submit.innerHTML = `${icon('plus', 16)} บันทึกวัสดุ`; renderIcons(); return toast(`บันทึกวัสดุไม่สำเร็จ: ${error.message}`, true); }
         if (startQty > 0) {
           const { error: moveError } = await context.supabase.rpc('record_inventory_movement', { p_material_id: created.id, p_type: 'receive', p_quantity: startQty, p_recipient: 'ยอดรับเข้าตั้งต้น', p_reference: null, p_note: 'เพิ่มวัสดุเข้าคลังครั้งแรก' });
           if (moveError) { startMovementFailed = true; toast(`สร้างวัสดุแล้ว แต่บันทึกยอดรับเข้าตั้งต้นไม่สำเร็จ: ${moveError.message}`, true); }
         }
       } else {
-        const local = { ...material, id: `mat-${Date.now()}`, quantity: startQty, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+        if (imageFile) localImage = await fileToDataUrl(imageFile);
+        const local = { ...material, image_data: localImage, id: `mat-${Date.now()}`, quantity: startQty, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
         materials.unshift(local);
         if (startQty > 0) addLocalMovement(local, 'receive', startQty, 'ยอดรับเข้าตั้งต้น');
         saveLocal();
       }
-      modal.remove(); await refreshAndRender(); if (!startMovementFailed) toast('บันทึกวัสดุเข้าคลังแล้ว');
+      close(); await refreshAndRender(); if (!startMovementFailed) toast('บันทึกวัสดุเข้าคลังแล้ว');
     });
   }
 

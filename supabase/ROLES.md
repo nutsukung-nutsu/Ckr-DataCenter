@@ -6,7 +6,7 @@
 - `asset_manager`: อ่านและเพิ่มครุภัณฑ์ได้ รับเข้า/เบิกจ่าย/นำเข้ารายการวัสดุได้ แต่แก้ไข/ลบครุภัณฑ์ไม่ได้
 - `viewer`: ดูทะเบียนครุภัณฑ์ สต็อกวัสดุ และประวัติรับเข้า/เบิกจ่ายได้อย่างเดียว
 
-เมนูคลังวัสดุต้องใช้ migration `migrations/202611110001_materials_inventory.sql` เพิ่มเติมจาก `role_access.sql` เพื่อสร้างตาราง นโยบาย RLS และฟังก์ชันทำรายการรับเข้า/เบิกจ่ายแบบปรับยอดอย่างปลอดภัย
+เมนูคลังวัสดุต้องใช้ migrations `202611110001_materials_inventory.sql` และ `202611110002_material_inventory_images.sql` เพิ่มเติมจาก `role_access.sql` เพื่อสร้างตาราง นโยบาย RLS ฟังก์ชันทำรายการรับเข้า/เบิกจ่าย และพื้นที่เก็บภาพวัสดุแบบ private
 
 บัญชี `aphisit.s@ckr.ac.th` จะได้รับบทบาท `super_admin` เมื่อบัญชีมีอยู่แล้ว หรือเมื่อถูกสร้างใน Supabase Authentication หลัง migration นี้ การสร้างบัญชีและตั้ง/เปลี่ยนรหัสผ่านให้ทำผ่าน Supabase Dashboard → Authentication → Users เท่านั้น อย่าใส่รหัสผ่านหรือ `service_role` key ในซอร์สโค้ด, GitHub หรือ Cloudflare build variables
 

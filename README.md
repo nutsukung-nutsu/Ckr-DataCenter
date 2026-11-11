@@ -17,7 +17,7 @@
 1. ติดตั้ง Node.js 20 ขึ้นไป
 2. คัดลอก `.env.example` เป็น `.env.local` แล้วใส่ Supabase Project URL และ publishable/anon key
 3. ใน Supabase SQL Editor ให้รัน `supabase/schema.sql` แล้วรัน `supabase/role_access.sql` เพื่อเปิดสิทธิ์ตามบทบาท
-4. สำหรับคลังวัสดุ ให้รัน migration `supabase/migrations/202611110001_materials_inventory.sql` เพิ่มเติมใน Supabase SQL Editor
+4. สำหรับคลังวัสดุ ให้รัน migration `supabase/migrations/202611110001_materials_inventory.sql` และ `supabase/migrations/202611110002_material_inventory_images.sql` เพิ่มเติมใน Supabase SQL Editor
 5. สร้างบัญชีบุคลากรใน Supabase Dashboard → Authentication → Users (อย่าใส่รหัสผ่านในโค้ดหรือ GitHub)
 6. Super Admin กำหนดบทบาทได้ในเมนู **กำหนดสิทธิ์ผู้ใช้**
 7. ติดตั้งและเปิดเว็บ: `npm install`, `npm run dev`
