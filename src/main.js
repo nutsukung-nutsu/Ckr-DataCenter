@@ -31,6 +31,7 @@ let searchTerm = '';
 let categoryFilter = 'ทั้งหมด';
 let statusFilter = 'ทั้งหมด';
 let view = 'dashboard';
+let animateMenuChange = false;
 let sidebarCollapsed = localStorage.getItem('bcn-ckr-sidebar-collapsed') === 'true';
 let registryMenuExpanded = localStorage.getItem('bcn-ckr-registry-menu-expanded') !== 'false';
 let settingsTab = localStorage.getItem('bcn-ckr-settings-tab') || 'assets';
@@ -96,6 +97,8 @@ const catalogGroups = [
   ['ink_types', 'ประเภทของหมึก', 'เช่น หมึกอิงค์เจ็ท หมึกเลเซอร์ หรือดรัม'], ['material_units', 'หน่วยนับวัสดุ', 'เช่น ชิ้น กล่อง ตลับ หรือรีม']
 ];
 function canManageSettings() { return !supabase || userRole === 'super_admin'; }
+function canImportAssignees() { return !supabase || ['super_admin', 'asset_manager'].includes(userRole); }
+function canImportCatalog(type) { return type === 'assignees' ? canImportAssignees() : canManageSettings(); }
 async function addSystemOption(type, rawValue, departmentId = null, assigneeType = '') {
   const value = String(rawValue || '').trim().replace(/\s+/g, ' ');
   if (!canManageSettings()) return toast('เฉพาะ Super Admin แก้ไขรายการตั้งค่าได้', true);
@@ -123,6 +126,33 @@ async function addSystemOption(type, rawValue, departmentId = null, assigneeType
   saveDemoSystemOptions(); applySystemOptions(); renderApp(); toast('เพิ่มรายการตั้งค่าแล้ว');
 }
 const catalogCsvTypes = new Set(['locations', 'departments', 'buildings', 'floors', 'assignees']);
+const serviceHealth = { cloudflare: null, github: null, supabase: null, checkedAt: null };
+async function checkServiceHealth() {
+  const checks = [
+    ['cloudflare', 'https://www.cloudflarestatus.com/api/v2/status.json'],
+    ['github', 'https://www.githubstatus.com/api/v2/status.json']
+  ];
+  await Promise.all(checks.map(async ([name, url]) => {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(8000), cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      serviceHealth[name] = { ok: data.status?.indicator === 'none', label: data.status?.description || 'ไม่ทราบสถานะ' };
+    } catch (error) { serviceHealth[name] = { ok: false, label: error.name === 'TimeoutError' ? 'หมดเวลาตรวจสอบ' : 'เชื่อมต่อไม่ได้' }; }
+  }));
+  if (!supabase || !session?.user) serviceHealth.supabase = { ok: false, label: isConfigured ? 'ยังไม่ได้เข้าสู่ระบบ' : 'ยังไม่ได้ตั้งค่า' };
+  else {
+    try {
+      const { error } = await supabase.from('system_options').select('id').limit(1);
+      serviceHealth.supabase = error ? { ok: false, label: error.message } : { ok: true, label: 'เชื่อมต่อฐานข้อมูลได้' };
+    } catch { serviceHealth.supabase = { ok: false, label: 'เชื่อมต่อไม่ได้' }; }
+  }
+  serviceHealth.checkedAt = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+}
+function serviceHealthHtml() {
+  const providers = [['cloudflare', 'Cloudflare'], ['github', 'GitHub'], ['supabase', 'Supabase']];
+  return `<section class="panel service-health"><div class="catalog-card-heading"><div><h3>สถานะการเชื่อมต่อ</h3><p>ตรวจสุขภาพบริการที่ระบบใช้งาน</p></div><button type="button" class="button secondary" id="check-services">${icon('rotate-cw', 15)} ตรวจสอบอีกครั้ง</button></div><div class="service-health-grid">${providers.map(([key, label]) => { const status = serviceHealth[key]; return `<div class="service-health-item ${status ? status.ok ? 'healthy' : 'unhealthy' : 'pending'}"><span class="health-dot"></span><div><strong>${label}</strong><small>${escapeHtml(status?.label || 'ยังไม่ได้ตรวจสอบ')}</small></div><b>${status ? status.ok ? 'ปกติ' : 'ขัดข้อง' : 'รอตรวจ'}</b></div>`; }).join('')}</div><small class="health-checked">${serviceHealth.checkedAt ? `ตรวจล่าสุด ${serviceHealth.checkedAt} น.` : 'สถานะ Cloudflare/GitHub อ้างอิงหน้า platform status สาธารณะ'}</small></section>`;
+}
 function parseCatalogCsv(text) {
   const rows = []; let row = [], cell = '', quoted = false;
   const source = String(text || '').replace(/^\uFEFF/, '');
@@ -183,17 +213,17 @@ function catalogCsvRows(text, type) {
 }
 function downloadCatalogCsvTemplate(type) {
   if (!catalogCsvTypes.has(type)) return;
-  const csv = type === 'assignees' ? '\ufeffหน่วยงาน,ชื่อผู้รับผิดชอบ,ประเภท\r\n' : `\ufeff${type === 'floors' ? 'ชั้น' : 'value'}\r\n`;
+  const csv = type === 'assignees' ? '\ufeffหน่วยงาน,ชื่อผู้รับผิดชอบ,ประเภท\r\n' : `\ufeff${type === 'departments' ? 'หน่วยงาน' : type === 'floors' ? 'ชั้น' : 'value'}\r\n`;
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   const link = Object.assign(document.createElement('a'), { href: url, download: `CKR-${type}-template.csv` });
   link.click(); URL.revokeObjectURL(url); toast('ดาวน์โหลดแบบฟอร์ม CSV แล้ว');
 }
 async function importCatalogCsv(type, file) {
-  if (!catalogCsvTypes.has(type) || !file || !canManageSettings()) return;
+  if (!catalogCsvTypes.has(type) || !file || !canImportCatalog(type)) return;
   if (file.size > 2 * 1024 * 1024) return toast('ไฟล์ CSV ต้องมีขนาดไม่เกิน 2 MB', true);
   if (!await refreshSystemOptionType(type)) return;
   const { entries, invalidCount, duplicateCount, missingColumns } = catalogCsvRows(await file.text(), type);
-  if (missingColumns) return toast('ไฟล์ผู้รับผิดชอบต้องมีคอลัมน์ หน่วยงาน และ ชื่อผู้รับผิดชอบ', true);
+  if (missingColumns) return toast('ใช้แบบฟอร์มผู้รับผิดชอบ CSV ซึ่งมีคอลัมน์ หน่วยงาน, ชื่อผู้รับผิดชอบ และประเภท', true);
   if (!entries.length) return toast(type === 'assignees' ? 'ไม่พบผู้รับผิดชอบที่นำเข้าได้ · ตรวจสอบชื่อหน่วยงานในไฟล์ให้ตรงกับตั้งค่าระบบ' : 'ไม่พบรายการที่นำเข้าได้ · ใช้คอลัมน์ value หรือชื่อรายการ', true);
   const existingByValue = new Map(systemOptions.filter(option => option.option_type === type).map(option => [option.value.toLocaleLowerCase(), option]));
   let alreadyActiveCount = 0;
@@ -253,14 +283,15 @@ async function deleteSystemOption(id) {
   systemOptions = systemOptions.filter(item => String(item.id) !== String(id));
   saveDemoSystemOptions(); applySystemOptions(); renderApp(); toast('ลบรายการตั้งค่าแล้ว');
 }
-async function editSystemOption(id, rawValue) {
+async function editSystemOption(id, rawValue, rawAssigneeType) {
   const option = systemOptions.find(item => String(item.id) === String(id));
   const value = String(rawValue || '').trim().replace(/\s+/g, ' ');
+  const assigneeType = option?.option_type === 'assignees' ? String(rawAssigneeType || '').trim().replace(/\s+/g, ' ').slice(0, 100) : option?.assignee_type;
   if (!option || !canManageSettings()) return;
   if (!value || value.length > 100) return toast('กรอกชื่อรายการไม่เกิน 100 ตัวอักษร', true);
   if (systemOptions.some(item => item.id !== option.id && item.option_type === option.option_type && item.value.toLocaleLowerCase() === value.toLocaleLowerCase())) return toast('มีรายการชื่อนี้อยู่แล้ว', true);
   if (supabase && session?.user) {
-    const { error } = await supabase.from('system_options').update({ value }).eq('id', id);
+    const { error } = await supabase.from('system_options').update({ value, ...(option.option_type === 'assignees' ? { assignee_type: assigneeType || null } : {}) }).eq('id', id);
     if (error) return toast(`แก้ไขรายการไม่ได้: ${error.message}`, true);
   }
   const previousValue = option.value;
@@ -268,14 +299,14 @@ async function editSystemOption(id, rawValue) {
     assets = assets.map(asset => asset.status === previousValue ? { ...asset, status: value } : asset);
     saveDemoAssets();
   }
-  option.value = value; saveDemoSystemOptions(); applySystemOptions(); renderApp(); toast('แก้ไขรายการตั้งค่าแล้ว');
+  option.value = value; if (option.option_type === 'assignees') option.assignee_type = assigneeType || null; saveDemoSystemOptions(); applySystemOptions(); renderApp(); toast('แก้ไขรายการตั้งค่าแล้ว');
 }
 async function renderSettings(content) {
   const canEdit = canManageSettings();
 
   const tabGroups = {
     assets: { label: 'ครุภัณฑ์', icon: 'boxes', description: 'ประเภทและสถานะที่ใช้ในทะเบียนครุภัณฑ์', types: ['asset_categories', 'asset_statuses'] },
-    places: { label: 'สถานที่และหน่วยงาน', icon: 'map-pin', description: 'ผู้รับผิดชอบ สถานที่ อาคาร ชั้น และหน่วยงาน', types: ['assignees', 'locations', 'departments', 'buildings', 'floors'] },
+    places: { label: 'สถานที่และหน่วยงาน', icon: 'map-pin', description: 'กำหนดผู้รับผิดชอบภายในหน่วยงาน พร้อมสถานที่ อาคาร และชั้น', types: ['departments', 'locations', 'buildings', 'floors'] },
     materials: { label: 'คลังวัสดุ', icon: 'warehouse', description: 'หมวดวัสดุ ประเภทหมึก และหน่วยนับ', types: ['material_categories', 'ink_types', 'material_units'] }
   };
   if (!tabGroups[settingsTab]) settingsTab = 'assets';
@@ -283,18 +314,19 @@ async function renderSettings(content) {
     const [, title, description] = catalogGroups.find(group => group[0] === type);
     const options = systemOptions.filter(option => option.option_type === type);
     const optionRow = option => `<div class="catalog-option ${option.is_active === false ? 'inactive' : ''}" data-catalog-row="${escapeHtml(option.id)}"><span class="catalog-option-value">${escapeHtml(option.value)}${type === 'assignees' && option.assignee_type ? `<small class="assignee-type-tag">${escapeHtml(option.assignee_type)}</small>` : ''}</span>${canEdit ? `<div class="catalog-option-actions"><button type="button" class="catalog-edit" data-option-id="${escapeHtml(option.id)}">แก้ไข</button><button type="button" class="catalog-delete" data-option-id="${escapeHtml(option.id)}" aria-label="ลบ ${escapeHtml(option.value)}">ลบ</button></div>` : ''}</div>`;
-    if (type === 'assignees') {
-      const departments = systemOptions.filter(option => option.option_type === 'departments' && option.is_active !== false);
-      const groups = departments.map(department => {
-        const people = options.filter(option => String(option.department_id || '') === String(department.id));
-      return `<details class="department-assignee-group"><summary><span>${escapeHtml(department.value)}</span><small>${people.length} คน</small></summary>${canEdit ? `<form class="department-assignee-form" data-department-id="${escapeHtml(department.id)}"><input name="value" maxlength="100" placeholder="ชื่อผู้รับผิดชอบ" aria-label="ชื่อผู้รับผิดชอบใน ${escapeHtml(department.value)}"/><input name="assigneeType" maxlength="100" placeholder="ประเภท/ตำแหน่ง เช่น ผู้อำนวยการ" aria-label="ประเภทหรือตำแหน่งผู้รับผิดชอบ"/><button type="submit" class="button primary">เพิ่ม</button></form>` : ''}<div class="catalog-option-list">${people.map(optionRow).join('') || '<span class="catalog-empty">ยังไม่มีผู้รับผิดชอบในหน่วยงานนี้</span>'}</div></details>`;
+    if (type === 'departments') {
+      const assigneeOptions = systemOptions.filter(option => option.option_type === 'assignees');
+      const departments = options.map(department => {
+        const people = assigneeOptions.filter(option => String(option.department_id || '') === String(department.id));
+        return `<div class="department-inline-card">${optionRow(department)}<details class="department-assignee-group"><summary><span>จัดการ/เพิ่มผู้รับผิดชอบ</span><small>${people.filter(person => person.is_active !== false).length} คน</small></summary>${canEdit ? `<form class="department-assignee-form" data-department-id="${escapeHtml(department.id)}"><input name="value" maxlength="100" placeholder="ชื่อผู้รับผิดชอบ เช่น ชื่อ นามสกุล" aria-label="ชื่อผู้รับผิดชอบใน ${escapeHtml(department.value)}" required/><input name="assigneeType" maxlength="100" placeholder="ประเภท/ตำแหน่ง เช่น นักวิชาการคอมพิวเตอร์" aria-label="ประเภทหรือตำแหน่งผู้รับผิดชอบ"/><button type="submit" class="button primary">เพิ่ม</button></form>` : ''}<div class="catalog-option-list">${people.map(person => `<div class="catalog-option ${person.is_active === false ? 'inactive' : ''}" data-catalog-row="${escapeHtml(person.id)}"><span class="catalog-option-value">${escapeHtml(person.value)}${person.assignee_type ? `<small class="assignee-type-tag">${escapeHtml(person.assignee_type)}</small>` : ''}</span>${canEdit ? `<div class="catalog-option-actions"><button type="button" class="catalog-edit" data-option-id="${escapeHtml(person.id)}">แก้ไข</button><button type="button" class="catalog-delete" data-option-id="${escapeHtml(person.id)}" aria-label="ลบ ${escapeHtml(person.value)}">ลบ</button></div>` : ''}</div>`).join('') || '<span class="catalog-empty">ยังไม่มีผู้รับผิดชอบในหน่วยงานนี้</span>'}</div></details></div>`;
       }).join('');
-      const unassigned = options.filter(option => !option.department_id);
-      return `<article class="panel catalog-card"><div class="catalog-card-heading"><div><h3>${title}</h3><p>เพิ่มรายชื่อภายใต้หน่วยงานที่รับผิดชอบครุภัณฑ์</p></div><span class="catalog-count">${options.filter(option => option.is_active !== false).length} รายการ</span></div>${groups || '<span class="catalog-empty">เพิ่มหน่วยงานก่อน เพื่อกำหนดผู้รับผิดชอบ</span>'}${unassigned.length ? `<details class="department-assignee-group"><summary><span>รายชื่อที่ยังไม่สังกัดหน่วยงาน</span><small>${unassigned.length} คน</small></summary><div class="catalog-option-list">${unassigned.map(optionRow).join('')}</div></details>` : ''}</article>`;
+      return `<article class="panel catalog-card"><div class="catalog-card-heading"><div><h3>${title}</h3><p>เพิ่มชื่อและประเภทผู้รับผิดชอบได้ใต้หน่วยงานนั้นโดยตรง</p></div><span class="catalog-count">${options.filter(option => option.is_active !== false).length} หน่วยงาน</span></div>${canEdit ? `<form class="catalog-add-form" data-option-type="${type}"><input name="value" maxlength="100" placeholder="เพิ่ม${title}" aria-label="เพิ่ม${title}" /><button type="submit" class="button primary">เพิ่ม</button></form>` : ''}${canImportCatalog('assignees') ? `<section class="assignee-csv-tools"><div><strong>ผู้รับผิดชอบ</strong><small>นำเข้ารายชื่อพร้อมหน่วยงานและประเภท/ตำแหน่ง</small></div><div class="catalog-import-tools"><button type="button" class="catalog-import-button" data-import-type="assignees">${icon('file-up', 15)} นำเข้า CSV</button><button type="button" class="catalog-template-button" data-template-type="assignees">${icon('file-down', 15)} แบบฟอร์ม CSV</button><input type="file" accept=".csv,text/csv" data-catalog-file="assignees" hidden /></div></section>` : ''}${canEdit ? `<div class="catalog-import-tools department-assignee-import"><span>นำเข้าไฟล์รายชื่อหน่วยงาน</span><button type="button" class="catalog-import-button" data-import-type="departments">${icon('file-up', 15)} นำเข้าหน่วยงาน CSV</button><button type="button" class="catalog-template-button" data-template-type="departments">${icon('file-down', 15)} แบบฟอร์มหน่วยงาน</button><input type="file" accept=".csv,text/csv" data-catalog-file="departments" hidden /></div>` : ''}<div class="department-inline-list">${departments || '<span class="catalog-empty">ยังไม่มีหน่วยงาน · เพิ่มหน่วยงานด้านบน</span>'}</div></article>`;
     }
-    return `<article class="panel catalog-card"><div class="catalog-card-heading"><div><h3>${title}</h3><p>${description}</p></div><span class="catalog-count">${options.filter(option => option.is_active !== false).length} รายการ</span></div>${canEdit ? `<form class="catalog-add-form" data-option-type="${type}"><input name="value" maxlength="100" placeholder="เพิ่ม${title}" aria-label="เพิ่ม${title}" /><button type="submit" class="button primary">เพิ่ม</button></form>${catalogCsvTypes.has(type) ? `<div class="catalog-import-tools"><button type="button" class="catalog-import-button" data-import-type="${type}">${icon('file-up', 15)} นำเข้า CSV</button><button type="button" class="catalog-template-button" data-template-type="${type}">${icon('file-down', 15)} แบบฟอร์ม CSV</button><input type="file" accept=".csv,text/csv" data-catalog-file="${type}" hidden /></div>` : ''}` : ''}<div class="catalog-option-list">${options.map(optionRow).join('') || '<span class="catalog-empty">ยังไม่มีรายการ · เพิ่มรายการด้านบน</span>'}</div></article>`;
+    return `<article class="panel catalog-card"><div class="catalog-card-heading"><div><h3>${title}</h3><p>${description}</p></div><span class="catalog-count">${options.filter(option => option.is_active !== false).length} รายการ</span></div>${canEdit ? `<form class="catalog-add-form" data-option-type="${type}"><input name="value" maxlength="100" placeholder="เพิ่ม${title}" aria-label="เพิ่ม${title}" /><button type="submit" class="button primary">เพิ่ม</button></form>` : ''}${catalogCsvTypes.has(type) && canImportCatalog(type) ? `<div class="catalog-import-tools"><button type="button" class="catalog-import-button" data-import-type="${type}">${icon('file-up', 15)} นำเข้า CSV</button><button type="button" class="catalog-template-button" data-template-type="${type}">${icon('file-down', 15)} แบบฟอร์ม CSV</button><input type="file" accept=".csv,text/csv" data-catalog-file="${type}" hidden /></div>` : ''}<div class="catalog-option-list">${options.map(optionRow).join('') || '<span class="catalog-empty">ยังไม่มีรายการ · เพิ่มรายการด้านบน</span>'}</div></article>`;
   };
-  content.innerHTML = `<div class="page-heading"><div><span class="section-kicker">SYSTEM CONFIGURATION</span><h1>ตั้งค่าระบบ</h1><p>จัดการตัวเลือกทะเบียนครุภัณฑ์และคลังวัสดุ แยกตามหมวดเพื่อค้นหาได้ง่าย</p></div><button class="button secondary" id="refresh-system-options">${icon('rotate-cw', 15)} รีเฟรช</button></div>${!canEdit ? '<div class="settings-readonly">สิทธิ์ผู้ดูข้อมูล · ติดต่อ Super Admin หากต้องการแก้ไขรายการ</div>' : ''}<nav class="settings-tabs" role="tablist" aria-label="หมวดตั้งค่าระบบ">${Object.entries(tabGroups).map(([key, tab]) => `<button type="button" role="tab" aria-selected="${settingsTab === key}" class="settings-tab ${settingsTab === key ? 'active' : ''}" data-settings-tab="${key}">${icon(tab.icon, 17)}<span>${tab.label}</span><small>${tab.types.reduce((sum, type) => sum + systemOptions.filter(option => option.option_type === type && option.is_active !== false).length, 0)}</small></button>`).join('')}</nav><section class="settings-tab-intro"><div><strong>${tabGroups[settingsTab].label}</strong><span>${tabGroups[settingsTab].description}</span></div></section><section class="settings-grid">${tabGroups[settingsTab].types.map(cardHtml).join('')}</section><p class="settings-footnote">การลบจะนำรายการออกจากตัวเลือกใหม่ ข้อมูลครุภัณฑ์และวัสดุเดิมยังคงอยู่ · รายการที่มีข้อมูลอ้างอิงจะลบไม่ได้</p>`;
+  content.innerHTML = `<div class="page-heading"><div><span class="section-kicker">SYSTEM CONFIGURATION</span><h1>ตั้งค่าระบบ</h1><p>จัดการตัวเลือกทะเบียนครุภัณฑ์และคลังวัสดุ แยกตามหมวดเพื่อค้นหาได้ง่าย</p></div><button class="button secondary" id="refresh-system-options">${icon('rotate-cw', 15)} รีเฟรช</button></div>${serviceHealthHtml()}${!canEdit ? `<div class="settings-readonly">${canImportAssignees() ? 'สิทธิ์ผู้จัดการครุภัณฑ์ · นำเข้า CSV รายชื่อผู้รับผิดชอบได้' : 'สิทธิ์ผู้ดูข้อมูล · ติดต่อ Super Admin หากต้องการแก้ไขรายการ'}</div>` : ''}<nav class="settings-tabs" role="tablist" aria-label="หมวดตั้งค่าระบบ">${Object.entries(tabGroups).map(([key, tab]) => `<button type="button" role="tab" aria-selected="${settingsTab === key}" class="settings-tab ${settingsTab === key ? 'active' : ''}" data-settings-tab="${key}">${icon(tab.icon, 17)}<span>${tab.label}</span><small>${tab.types.reduce((sum, type) => sum + systemOptions.filter(option => option.option_type === type && option.is_active !== false).length, 0)}</small></button>`).join('')}</nav><section class="settings-tab-intro"><div><strong>${tabGroups[settingsTab].label}</strong><span>${tabGroups[settingsTab].description}</span></div></section><section class="settings-grid">${tabGroups[settingsTab].types.map(cardHtml).join('')}</section><p class="settings-footnote">การลบจะนำรายการออกจากตัวเลือกใหม่ ข้อมูลครุภัณฑ์และวัสดุเดิมยังคงอยู่ · รายการที่มีข้อมูลอ้างอิงจะลบไม่ได้</p>`;
+  content.querySelector('#check-services').addEventListener('click', async event => { const button = event.currentTarget; button.disabled = true; button.textContent = 'กำลังตรวจสอบ…'; await checkServiceHealth(); renderApp(); });
+  if (!serviceHealth.checkedAt) { checkServiceHealth().then(() => { if (view === 'settings') renderApp(); }); }
   content.querySelectorAll('[data-settings-tab]').forEach(button => button.addEventListener('click', () => { settingsTab = button.dataset.settingsTab; localStorage.setItem('bcn-ckr-settings-tab', settingsTab); renderApp(); }));
   content.querySelector('#refresh-system-options').addEventListener('click', async () => { await loadSystemOptions(); renderApp(); toast('อัปเดตรายการตั้งค่าแล้ว'); });
   content.querySelectorAll('.catalog-add-form').forEach(form => form.addEventListener('submit', async event => { event.preventDefault(); await addSystemOption(form.dataset.optionType, new FormData(form).get('value')); }));
@@ -305,8 +337,8 @@ async function renderSettings(content) {
   content.querySelectorAll('.catalog-delete').forEach(button => button.addEventListener('click', () => deleteSystemOption(button.dataset.optionId)));
   content.querySelectorAll('.catalog-edit').forEach(button => button.addEventListener('click', () => {
     const option = systemOptions.find(item => String(item.id) === button.dataset.optionId), row = button.closest('.catalog-option'); if (!option || !row) return;
-    row.innerHTML = `<form class="catalog-edit-form"><input name="value" maxlength="100" value="${escapeHtml(option.value)}" aria-label="แก้ไข${escapeHtml(option.value)}" /><button type="submit" class="catalog-save">บันทึก</button><button type="button" class="catalog-cancel">ยกเลิก</button></form>`;
-    const form = row.querySelector('form'); form.elements.value.focus(); form.addEventListener('submit', event => { event.preventDefault(); editSystemOption(option.id, form.elements.value.value); });
+    row.innerHTML = `<form class="catalog-edit-form"><input name="value" maxlength="100" value="${escapeHtml(option.value)}" aria-label="แก้ไข${escapeHtml(option.value)}" />${option.option_type === 'assignees' ? `<input name="assigneeType" maxlength="100" value="${escapeHtml(option.assignee_type || '')}" aria-label="แก้ไขประเภทผู้รับผิดชอบ" placeholder="ประเภท/ตำแหน่ง" />` : ''}<button type="submit" class="catalog-save">บันทึก</button><button type="button" class="catalog-cancel">ยกเลิก</button></form>`;
+    const form = row.querySelector('form'); form.elements.value.focus(); form.addEventListener('submit', event => { event.preventDefault(); editSystemOption(option.id, form.elements.value.value, form.elements.assigneeType?.value); });
     row.querySelector('.catalog-cancel').addEventListener('click', () => renderApp());
   }));
   renderIcons();
@@ -345,13 +377,20 @@ function renderApp() {
   document.querySelector('#app').innerHTML = `
     <div class="app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}"><aside class="sidebar"><div class="brand-lockup"><div class="brand-mark"><img class="sidebar-logo" src="/ckr-logo.jpg" alt="ตราวิทยาลัยพยาบาลบรมราชชนนี จักรีรัช" /></div><div class="brand-copy"><strong>คลังข้อมูลครุภัณฑ์</strong><small>CKR DATA CENTER</small></div><button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-label="${sidebarCollapsed ? 'ขยายแถบเมนู' : 'ย่อแถบเมนู'}" title="${sidebarCollapsed ? 'ขยายแถบเมนู' : 'ย่อแถบเมนู'}">${icon(sidebarCollapsed ? 'panel-left-open' : 'panel-left-close', 17)}</button></div><div class="nav-label">เมนูหลัก</div><nav class="nav-list"><button data-view="dashboard" class="nav-item ${view === 'dashboard' ? 'active' : ''}">${icon('layout-dashboard')}<span>ภาพรวม</span></button><div class="nav-tree-group"><button data-view="assets" class="nav-item nav-parent ${view === 'assets' ? 'active' : ''}">${icon('package-search')}<span>ทะเบียนครุภัณฑ์</span><span class="nav-count">${assets.length}</span></button><button id="registry-menu-toggle" class="nav-tree-toggle" type="button" aria-label="${registryMenuExpanded ? 'ย่อเมนูย่อยทะเบียนครุภัณฑ์' : 'ขยายเมนูย่อยทะเบียนครุภัณฑ์'}" aria-expanded="${registryMenuExpanded}" aria-controls="registry-submenu">${icon(registryMenuExpanded ? 'chevron-down' : 'chevron-right', 15)}</button></div><div id="registry-submenu" class="nav-subtree ${registryMenuExpanded ? '' : 'collapsed'}" aria-label="ทะเบียนครุภัณฑ์แยกตามหมวดหมู่">${assetCategories.map(category => `<button data-category="${escapeHtml(category)}" class="nav-subitem ${view === 'assets' && categoryFilter === category ? 'active' : ''}" title="ครุภัณฑ์${escapeHtml(category)}"><span class="nav-subicon">${icon(categoryIcon(category), 16)}</span><span>ครุภัณฑ์${escapeHtml(category)}</span><small>${assets.filter(asset => asset.category === category).length}</small></button>`).join('')}</div><button data-view="materials" class="nav-item ${view === 'materials' ? 'active' : ''}">${icon('warehouse')}<span>คลังวัสดุ</span><span class="nav-pip"></span></button><button data-view="reports" class="nav-item ${view === 'reports' ? 'active' : ''}">${icon('chart-no-axes-combined')}<span>รายงาน</span></button></nav><div class="nav-label nav-label-spaced">จัดการข้อมูล</div><nav class="nav-list"><button data-view="locations" class="nav-item">${icon('map-pin')}<span>สถานที่จัดเก็บ</span></button><button data-view="people" class="nav-item">${icon('users-round')}<span>ผู้รับผิดชอบ</span></button><button data-view="settings" class="nav-item ${view === 'settings' ? 'active' : ''}">${icon('settings-2')}<span>ตั้งค่าระบบ</span></button>${userRole === 'super_admin' ? `<button data-view="users" class="nav-item ${view === 'users' ? 'active' : ''}">${icon('shield-user')}<span>กำหนดสิทธิ์ผู้ใช้</span></button>` : ''}</nav></aside>
     <main class="main-panel"><header class="topbar"><div class="crumbs"><span>ภาพรวม</span>${icon('chevron-right', 14)}<strong>${escapeHtml(activeNav)}</strong></div><div class="top-actions"><button class="icon-button" id="notifications" aria-label="การแจ้งเตือน">${icon('bell', 18)}<span class="notification-dot"></span></button><div class="top-divider"></div><button class="top-user" id="logout-button" title="ออกจากระบบ" aria-label="ออกจากระบบ ${escapeHtml(name)}"><div class="avatar small">${escapeHtml(firstChar)}</div><span>${escapeHtml(name)}</span>${icon('log-out', 15)}</button></div></header><div class="content" id="content"></div></main></div>`;
-  document.querySelectorAll('.nav-item').forEach(button => { button.title = button.querySelector('span')?.textContent || ''; button.addEventListener('click', () => { if (button.classList.contains('nav-parent')) { registryMenuExpanded = !registryMenuExpanded; localStorage.setItem('bcn-ckr-registry-menu-expanded', String(registryMenuExpanded)); renderApp(); return; } view = button.dataset.view; activeNav = button.querySelector('span').textContent; if (view === 'assets') categoryFilter = 'ทั้งหมด'; if (view === 'dashboard') categoryFilter = 'ทั้งหมด'; renderApp(); }); });
+  document.querySelectorAll('.nav-item').forEach(button => { button.title = button.querySelector('span')?.textContent || ''; button.addEventListener('click', () => { if (button.classList.contains('nav-parent')) { registryMenuExpanded = !registryMenuExpanded; localStorage.setItem('bcn-ckr-registry-menu-expanded', String(registryMenuExpanded)); renderApp(); return; } const nextView = button.dataset.view; animateMenuChange = view !== nextView; view = nextView; activeNav = button.querySelector('span').textContent; if (view === 'assets') categoryFilter = 'ทั้งหมด'; if (view === 'dashboard') categoryFilter = 'ทั้งหมด'; renderApp(); }); });
   document.querySelector('#registry-menu-toggle').addEventListener('click', () => { registryMenuExpanded = !registryMenuExpanded; localStorage.setItem('bcn-ckr-registry-menu-expanded', String(registryMenuExpanded)); renderApp(); });
-  document.querySelectorAll('.nav-subitem').forEach(button => button.addEventListener('click', () => { view = 'assets'; categoryFilter = button.dataset.category; activeNav = 'ทะเบียนครุภัณฑ์ · ครุภัณฑ์' + categoryFilter; renderApp(); }));
+  document.querySelectorAll('.nav-subitem').forEach(button => button.addEventListener('click', () => { animateMenuChange = view !== 'assets' || categoryFilter !== button.dataset.category; view = 'assets'; categoryFilter = button.dataset.category; activeNav = 'ทะเบียนครุภัณฑ์ · ครุภัณฑ์' + categoryFilter; renderApp(); }));
   document.querySelector('#logout-button').addEventListener('click', signOut);
   document.querySelector('#sidebar-toggle').addEventListener('click', () => { sidebarCollapsed = !sidebarCollapsed; localStorage.setItem('bcn-ckr-sidebar-collapsed', String(sidebarCollapsed)); renderApp(); });
   document.querySelector('#notifications').addEventListener('click', () => toast('ไม่มีการแจ้งเตือนใหม่'));
-  renderContent(); renderIcons();
+  renderContent();
+  if (animateMenuChange) {
+    const content = document.querySelector('#content');
+    content.classList.remove('menu-enter'); void content.offsetWidth; content.classList.add('menu-enter');
+    content.addEventListener('animationend', () => content.classList.remove('menu-enter'), { once: true });
+    animateMenuChange = false;
+  }
+  renderIcons();
 }
 
 function statusClass(status) { return ['ใช้งานปกติ', 'กำลังใช้งาน', 'พร้อมใช้งาน', 'เครื่องสำรอง'].includes(status) ? 'good' : ['รอซ่อม', 'ส่งซ่อม', 'ซ่อมบำรุง', 'รอแทงจำหน่าย', 'รอจำหน่าย'].includes(status) ? 'warning' : ['ใกล้ครบอายุ'].includes(status) ? 'purple' : 'muted'; }
@@ -475,7 +514,7 @@ function openAssetModal() {
   const departments = selectOptions(catalogs.departments, catalogs.departments.length ? 'เลือกหน่วยงาน' : 'เพิ่มหน่วยงานในตั้งค่าระบบ');
   const floors = selectOptions(catalogs.floors, catalogs.floors.length ? 'เลือกชั้น' : 'เพิ่มชั้นในตั้งค่าระบบ');
   const buildings = selectOptions(catalogs.buildings, catalogs.buildings.length ? 'เลือกอาคาร' : 'เพิ่มอาคารในตั้งค่าระบบ');
-  const assignees = selectOptions(catalogs.assignees, catalogs.assignees.length ? 'เลือกผู้รับผิดชอบ' : 'เพิ่มผู้รับผิดชอบในตั้งค่าระบบ');
+  const assignees = selectOptions([], 'เลือกหน่วยงานก่อน');
   modal.innerHTML = '<section class="asset-modal"><div class="modal-head"><div><span class="section-kicker">ASSET REGISTRY</span><h2>เพิ่มครุภัณฑ์ใหม่</h2></div><button class="icon-button" id="close-modal" aria-label="ปิด">×</button></div>' +
     '<form id="asset-form"><div class="form-grid">' +
     '<div class="field">' + fieldLabel('barcode', 'เลขครุภัณฑ์', 'blue') + '<input name="asset_code" placeholder="เช่น 7440-001-001/1" /></div>' +
@@ -487,7 +526,7 @@ function openAssetModal() {
     '<div class="field">' + fieldLabel('landmark', 'หน่วยงาน', 'teal') + '<select name="department">' + departments + '</select></div>' +
     '<div class="field">' + fieldLabel('layers', 'ชั้น', 'blue') + '<select name="floor">' + floors + '</select></div>' +
     '<div class="field">' + fieldLabel('building', 'อาคาร', 'amber') + '<select name="building">' + buildings + '</select></div>' +
-    '<div class="field">' + fieldLabel('user-round', 'ผู้รับผิดชอบ', 'violet') + '<select name="assignee">' + assignees + '</select></div>' +
+    '<div class="field assignee-picker-field">' + fieldLabel('user-round', 'ผู้รับผิดชอบ (อยู่ภายใต้หน่วยงาน)', 'violet') + '<input name="assigneeSearch" type="search" placeholder="เลือกหน่วยงานก่อนค้นหารายชื่อ" aria-label="ค้นหารายชื่อผู้รับผิดชอบ" autocomplete="off" disabled /><select name="assignee" disabled>' + assignees + '</select><small class="assignee-picker-hint">ตั้งชื่อและประเภทได้ที่ ตั้งค่าระบบ → สถานที่และหน่วยงาน → ขยายหน่วยงานที่ต้องการ</small></div>' +
     '<div class="field">' + fieldLabel('shield-check', 'สถานะ', 'mint') + '<select name="status">' + statuses + '</select></div>' +
     '<div class="field image-field">' + fieldLabel('image', 'ภาพอุปกรณ์ (สูงสุด 2 ภาพ)') + '<div class="image-actions"><button type="button" class="image-action image-action-camera" id="take-asset-photo">ถ่ายรูปใหม่</button><button type="button" class="image-action" id="choose-asset-image">เลือกจากเครื่อง</button></div><input id="asset-image" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden /><input id="asset-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden /><div id="asset-image-preview" class="asset-image-preview" tabindex="0"><span>วางรูปภาพด้วย Ctrl+V หรือเลือกรูป JPG, PNG, WebP ไม่เกิน 10 MB</span></div><small>เลือกรูปได้ 1–2 ภาพ · จัดเก็บแยกตามหมวดหมู่และเลขครุภัณฑ์</small></div>' +
     '</div><details class="optional-asset-details"><summary>ข้อมูลเพิ่มเติม</summary><div class="form-grid">' +
@@ -497,13 +536,27 @@ function openAssetModal() {
     '</div></details><div class="modal-actions"><button type="button" class="button secondary" id="cancel-modal">ยกเลิก</button><button type="submit" class="button primary" id="save-asset">บันทึกครุภัณฑ์</button></div></form></section>';
   document.body.append(modal); renderIcons();
   const form = modal.querySelector('#asset-form'), imageInput = modal.querySelector('#asset-image'), cameraInput = modal.querySelector('#asset-camera');
+  let departmentAssignees = [];
+  const renderAssigneeOptions = (preserveSelection = false) => {
+    const select = form.elements.assignee, search = form.elements.assigneeSearch;
+    const previous = preserveSelection ? select.value : '';
+    const query = search.value.trim().toLocaleLowerCase();
+    const matches = departmentAssignees.filter(option => option.value.toLocaleLowerCase().includes(query));
+    select.innerHTML = selectOptions(matches.map(option => option.value), departmentAssignees.length ? (matches.length ? 'เลือกผู้รับผิดชอบ' : 'ไม่พบรายชื่อที่ค้นหา') : 'ไม่พบรายชื่อในหน่วยงานนี้');
+    select.disabled = !departmentAssignees.length;
+    if (previous && matches.some(option => option.value === previous)) select.value = previous;
+    const hint = form.querySelector('.assignee-picker-hint');
+    hint.textContent = departmentAssignees.length ? `พบ ${departmentAssignees.length} รายชื่อในหน่วยงานนี้` : 'ยังไม่มีรายชื่อผู้รับผิดชอบในหน่วยงานนี้';
+  };
   const updateAssigneeOptions = () => {
     const department = systemOptions.find(option => option.option_type === 'departments' && option.value === form.elements.department.value);
-    const linked = systemOptions.filter(option => option.option_type === 'assignees' && option.is_active !== false && department && String(option.department_id || '') === String(department.id));
-    const available = linked.length ? linked.map(option => option.value) : catalogs.assignees;
-    form.elements.assignee.innerHTML = selectOptions(available, available.length ? 'เลือกผู้รับผิดชอบ' : 'เพิ่มผู้รับผิดชอบในตั้งค่าระบบ');
+    departmentAssignees = systemOptions.filter(option => option.option_type === 'assignees' && option.is_active !== false && department && String(option.department_id || '') === String(department.id));
+    form.elements.assigneeSearch.value = '';
+    form.elements.assigneeSearch.disabled = !department;
+    renderAssigneeOptions();
   };
   form.elements.department.addEventListener('change', updateAssigneeOptions);
+  form.elements.assigneeSearch.addEventListener('input', () => renderAssigneeOptions(true));
   const preview = modal.querySelector('#asset-image-preview'), saveButton = modal.querySelector('#save-asset');
   const selectedImages = [null, null];
   const previewUrls = new Map();
