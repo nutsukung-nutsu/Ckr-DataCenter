@@ -183,10 +183,11 @@ async function loadAssetThumbnails() {
   }));
 }
 
-function tableRows() { const rows = filteredAssets().slice(0, view === 'dashboard' ? 5 : 100); if (!rows.length) return `<tr><td colspan="7"><div class="table-empty">${icon('search-x', 21)}<span>ไม่พบรายการที่ตรงกับการค้นหา</span></div></td></tr>`; return rows.map(a => `<tr><td><div class="asset-name-cell"><div class="asset-type-icon ${categoryIcon(a.category) === 'monitor' ? 'icon-purple' : categoryIcon(a.category) === 'router' ? 'icon-blue' : 'icon-orange'}">${a.image_path ? `<img class="asset-thumb" data-image-path="${escapeHtml(a.image_path)}" alt="${escapeHtml(a.name)}" />` : icon(categoryIcon(a.category), 17)}</div><div><strong>${escapeHtml(a.name)}</strong><span>${escapeHtml(a.asset_code)} <i>·</i> ${escapeHtml(a.brand || 'ไม่ระบุยี่ห้อ')}</span></div></div></td><td><span class="category-chip">${escapeHtml(a.category)}</span></td><td><span class="location-cell">${icon('map-pin', 13)} ${escapeHtml([a.building, a.floor, a.location].filter(Boolean).join(' · ') || '—')}</span></td><td><span class="owner-cell"><span class="owner-avatar">${escapeHtml((a.assignee || a.department || 'IT')[0])}</span>${escapeHtml(a.assignee || a.department || 'งาน IT')}</span></td><td><span class="status-pill ${statusClass(a.status)}"><i></i>${escapeHtml(a.status)}</span></td><td class="price-cell">${money(a.price)}</td><td>${userRole === 'super_admin' || !supabase ? `<button class="row-more" data-delete="${escapeHtml(a.id)}" title="ลบรายการ">${icon('ellipsis', 17)}</button>` : ''}</td></tr>`).join(''); }
+function primaryAssetImage(asset) { return Array.isArray(asset.image_paths) && asset.image_paths.length ? asset.image_paths[0] : asset.image_path; }
+function tableRows() { const rows = filteredAssets().slice(0, view === 'dashboard' ? 5 : 100); if (!rows.length) return `<tr><td colspan="7"><div class="table-empty">${icon('search-x', 21)}<span>ไม่พบรายการที่ตรงกับการค้นหา</span></div></td></tr>`; return rows.map(a => { const imagePath = primaryAssetImage(a); return `<tr><td><div class="asset-name-cell"><div class="asset-type-icon ${categoryIcon(a.category) === 'monitor' ? 'icon-purple' : categoryIcon(a.category) === 'router' ? 'icon-blue' : 'icon-orange'}">${imagePath ? `<img class="asset-thumb" data-image-path="${escapeHtml(imagePath)}" alt="${escapeHtml(a.name)}" />` : icon(categoryIcon(a.category), 17)}</div><div><strong>${escapeHtml(a.name)}</strong><span>${escapeHtml(a.asset_code)} <i>·</i> ${escapeHtml(a.brand || 'ไม่ระบุยี่ห้อ')}</span></div></div></td><td><span class="category-chip">${escapeHtml(a.category)}</span></td><td><span class="location-cell">${icon('map-pin', 13)} ${escapeHtml([a.building, a.floor, a.location].filter(Boolean).join(' · ') || '—')}</span></td><td><span class="owner-cell"><span class="owner-avatar">${escapeHtml((a.assignee || a.department || 'IT')[0])}</span>${escapeHtml(a.assignee || a.department || 'งาน IT')}</span></td><td><span class="status-pill ${statusClass(a.status)}"><i></i>${escapeHtml(a.status)}</span></td><td class="price-cell">${money(a.price)}</td><td>${userRole === 'super_admin' || !supabase ? `<button class="row-more" data-delete="${escapeHtml(a.id)}" title="ลบรายการ">${icon('ellipsis', 17)}</button>` : ''}</td></tr>`; }).join(''); }
 function updateRows() { document.querySelector('#asset-rows').innerHTML = tableRows(); document.querySelector('#row-count').textContent = filteredAssets().length; renderIcons(); loadAssetThumbnails(); }
 
-function cleanPathPart(value) { return String(value || '').normalize('NFKC').trim().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').slice(0, 90) || 'item'; }
+function cleanPathPart(value) { return String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70) || 'item'; }
 function thaiFiscalYear(dateValue) {
   if (!dateValue) return '';
   const date = new Date(dateValue + 'T00:00:00');
@@ -210,7 +211,7 @@ function openAssetModal() {
     '<div class="field">' + fieldLabel('building', 'อาคาร', 'amber') + '<input name="building" placeholder="เช่น อาคาร 1" /></div>' +
     '<div class="field">' + fieldLabel('user-round', 'ผู้รับผิดชอบ', 'violet') + '<input name="assignee" placeholder="ชื่อผู้รับผิดชอบ" /></div>' +
     '<div class="field">' + fieldLabel('shield-check', 'สถานะ', 'mint') + '<select name="status">' + statuses + '</select></div>' +
-    '<div class="field image-field">' + fieldLabel('image', 'ภาพอุปกรณ์') + '<div class="image-actions"><button type="button" class="image-action image-action-camera" id="take-asset-photo">ถ่ายรูปใหม่</button><button type="button" class="image-action" id="choose-asset-image">เลือกจากเครื่อง</button></div><input id="asset-image" type="file" accept="image/jpeg,image/png,image/webp" hidden /><input id="asset-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden /><div id="asset-image-preview" class="asset-image-preview" tabindex="0"><span>วางรูปภาพด้วย Ctrl+V หรือเลือกรูป JPG, PNG, WebP ไม่เกิน 10 MB</span></div><small>จัดเก็บแยกโฟลเดอร์ตามประเภท และตั้งชื่อด้วยเลขครุภัณฑ์กับผลิตภัณฑ์</small></div>' +
+    '<div class="field image-field">' + fieldLabel('image', 'ภาพอุปกรณ์ (สูงสุด 2 ภาพ)') + '<div class="image-actions"><button type="button" class="image-action image-action-camera" id="take-asset-photo">ถ่ายรูปใหม่</button><button type="button" class="image-action" id="choose-asset-image">เลือกจากเครื่อง</button></div><input id="asset-image" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden /><input id="asset-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden /><div id="asset-image-preview" class="asset-image-preview" tabindex="0"><span>วางรูปภาพด้วย Ctrl+V หรือเลือกรูป JPG, PNG, WebP ไม่เกิน 10 MB</span></div><small>เลือกรูปได้ 1–2 ภาพ · จัดเก็บแยกตามหมวดหมู่และเลขครุภัณฑ์</small></div>' +
     '</div><details class="optional-asset-details"><summary>ข้อมูลเพิ่มเติม</summary><div class="form-grid">' +
     '<div class="field">' + fieldLabel('tag', 'ยี่ห้อ / รุ่น', 'blue') + '<input name="brand" placeholder="ระบุยี่ห้อและรุ่น" /></div>' +
     '<div class="field">' + fieldLabel('hard-drive', 'หมายเลขเครื่อง (S/N)', 'teal') + '<input name="serial_number" placeholder="Serial number" /></div>' +
@@ -219,43 +220,69 @@ function openAssetModal() {
   document.body.append(modal); renderIcons();
   const form = modal.querySelector('#asset-form'), imageInput = modal.querySelector('#asset-image'), cameraInput = modal.querySelector('#asset-camera');
   const preview = modal.querySelector('#asset-image-preview'), saveButton = modal.querySelector('#save-asset');
+  const selectedImages = [null, null];
+  const previewUrls = new Map();
   const chooseImage = modal.querySelector('#choose-asset-image'), takePhoto = modal.querySelector('#take-asset-photo');
   chooseImage.onclick = () => imageInput.click(); takePhoto.onclick = () => cameraInput.click();
+  const renderImagePreview = () => {
+    preview.innerHTML = selectedImages.map((file, index) => {
+      if (!file) return '';
+      if (!previewUrls.has(file)) previewUrls.set(file, URL.createObjectURL(file));
+      return '<div class="asset-image-item"><img alt="ภาพครุภัณฑ์ ' + (index + 1) + '" src="' + previewUrls.get(file) + '" /><button type="button" class="asset-image-remove" data-remove-image="' + index + '" aria-label="นำภาพออก">×</button></div>';
+    }).join('') || '<span>วางรูปภาพด้วย Ctrl+V หรือเลือกรูป JPG, PNG, WebP ไม่เกิน 10 MB</span>';
+  };
   const setImage = file => {
     if (!file) return;
-    if (!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) { imageInput.value = ''; cameraInput.value = ''; preview.innerHTML = '<span>ไฟล์ไม่ถูกต้อง หรือมีขนาดเกิน 10 MB</span>'; return; }
-    const transfer = new DataTransfer(); transfer.items.add(file); imageInput.files = transfer.files;
-    const reader = new FileReader(); reader.onload = () => { preview.innerHTML = '<img alt="ตัวอย่างภาพครุภัณฑ์" src="' + reader.result + '" />'; }; reader.readAsDataURL(file);
+    if (!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) { toast('กรุณาเลือกภาพ JPG, PNG หรือ WebP ขนาดไม่เกิน 10 MB', true); return; }
+    const emptySlot = selectedImages.findIndex(image => !image);
+    if (emptySlot < 0) { toast('เพิ่มภาพได้สูงสุด 2 ภาพ · กด × บนภาพเพื่อเปลี่ยน', true); return; }
+    selectedImages[emptySlot] = file; renderImagePreview();
   };
-  imageInput.addEventListener('change', () => setImage(imageInput.files?.[0]));
+  imageInput.addEventListener('change', () => { Array.from(imageInput.files || []).forEach(setImage); imageInput.value = ''; });
   cameraInput.addEventListener('change', () => setImage(cameraInput.files?.[0]));
+  preview.addEventListener('click', event => { const remove = event.target.closest('[data-remove-image]'); if (!remove) return; const index = Number(remove.dataset.removeImage), file = selectedImages[index]; selectedImages[index] = null; if (file && previewUrls.has(file)) { URL.revokeObjectURL(previewUrls.get(file)); previewUrls.delete(file); } renderImagePreview(); });
   modal.addEventListener('paste', event => { const imageItem = Array.from(event.clipboardData?.items || []).find(item => item.type.startsWith('image/')); const file = imageItem?.getAsFile(); if (file) { event.preventDefault(); setImage(file); } });
   form.elements.received_date.addEventListener('change', () => { form.elements.fiscal_year.value = thaiFiscalYear(form.elements.received_date.value); });
-  const close = () => modal.remove(); modal.querySelector('#close-modal').onclick = close; modal.querySelector('#cancel-modal').onclick = close;
+  const close = () => { for (const url of previewUrls.values()) URL.revokeObjectURL(url); previewUrls.clear(); modal.remove(); }; modal.querySelector('#close-modal').onclick = close; modal.querySelector('#cancel-modal').onclick = close;
   modal.onclick = event => { if (event.target === modal) close(); };
   form.onsubmit = async event => {
     event.preventDefault();
-    const values = Object.fromEntries(new FormData(form)), file = imageInput.files?.[0] || null;
+    const values = Object.fromEntries(new FormData(form));
+    const files = selectedImages.map((file, index) => file ? { file, index } : null).filter(Boolean);
     const record = { asset_code: String(values.asset_code || '').trim() || null, name: String(values.name || '').trim() || null, category: values.category || 'อื่น ๆ',
       received_date: values.received_date || null, purchase_date: values.received_date || null, fiscal_year: Number(values.fiscal_year) || null,
       location: String(values.location || '').trim() || null, department: String(values.department || '').trim() || null, floor: String(values.floor || '').trim() || null,
       building: String(values.building || '').trim() || null, assignee: String(values.assignee || '').trim() || null, status: values.status || 'พร้อมใช้งาน',
       brand: String(values.brand || '').trim() || null, serial_number: String(values.serial_number || '').trim() || null,
-      price: Number(values.price) || 0, image_path: null };
+      price: Number(values.price) || 0, image_path: null, image_paths: [] };
     saveButton.disabled = true; saveButton.textContent = 'กำลังบันทึก…';
-    let path = null;
-    if (file && supabase && session?.user) {
-      const ext = file.type === 'image/jpeg' ? 'jpg' : file.type === 'image/png' ? 'png' : 'webp';
-      path = cleanPathPart(record.category || 'อื่น ๆ') + '/' + cleanPathPart(record.asset_code || 'ไม่ระบุเลข') + '-' + cleanPathPart(record.name || 'ไม่ระบุชื่อ') + '.' + ext;
-      const { error: uploadError } = await supabase.storage.from('it-asset-images').upload(path, file, { contentType: file.type, upsert: false });
-      if (uploadError) { toast('อัปโหลดภาพไม่สำเร็จ: ' + uploadError.message, true); saveButton.disabled = false; saveButton.textContent = 'บันทึกครุภัณฑ์'; return; }
-      record.image_path = path;
+    const uploadedPaths = [];
+    if (supabase && session?.user && record.asset_code) {
+      const { data: existingAsset, error: duplicateCheckError } = await supabase.from('it_assets').select('id').eq('asset_code', record.asset_code).maybeSingle();
+      if (duplicateCheckError) { toast('ตรวจสอบเลขครุภัณฑ์ไม่สำเร็จ: ' + duplicateCheckError.message, true); saveButton.disabled = false; saveButton.textContent = 'บันทึกครุภัณฑ์'; return; }
+      if (existingAsset) { toast('เลขครุภัณฑ์นี้มีในระบบแล้ว กรุณาตรวจสอบก่อนบันทึก', true); saveButton.disabled = false; saveButton.textContent = 'บันทึกครุภัณฑ์'; return; }
+    }
+    if (files.length && supabase && session?.user) {
+      const categoryFolder = ({ 'คอมพิวเตอร์': 'computer', 'ไฟฟ้าและวิทยุ': 'electrical-radio', 'โฆษณาและเผยแพร่': 'advertising-media' })[record.category] || 'other';
+      const assetPart = cleanPathPart(record.asset_code || '');
+      const stableAssetPart = assetPart === 'item' ? 'asset-' + crypto.randomUUID() : assetPart;
+      for (const { file, index } of files) {
+        const productPart = cleanPathPart(record.name || 'equipment');
+        const path = `${categoryFolder}/${stableAssetPart}-${productPart}-${index + 1}.img`;
+        const { error: uploadError } = await supabase.storage.from('it-asset-images').upload(path, file, { contentType: file.type, upsert: true });
+        if (uploadError) {
+          toast(`อัปโหลดภาพไม่สำเร็จ (${file.name}): ${uploadError.message}`, true); saveButton.disabled = false; saveButton.textContent = 'บันทึกครุภัณฑ์'; return;
+        }
+        uploadedPaths[index] = path;
+      }
+      record.image_paths = uploadedPaths.filter(Boolean);
+      record.image_path = record.image_paths[0] || null;
     }
     if (supabase && session?.user) {
       const { data, error } = await supabase.from('it_assets').insert({ ...record, created_by: session.user.id }).select().single();
-      if (error) { if (path) await supabase.storage.from('it-asset-images').remove([path]); toast('บันทึกไม่สำเร็จ: ' + error.message, true); saveButton.disabled = false; saveButton.textContent = 'บันทึกครุภัณฑ์'; return; }
+      if (error) { toast('บันทึกไม่สำเร็จ: ' + error.message, true); saveButton.disabled = false; saveButton.textContent = 'บันทึกครุภัณฑ์'; return; }
       assets.unshift(data);
-    } else { if (file) toast('โหมดตัวอย่างไม่สามารถจัดเก็บภาพถาวรได้', true); assets.unshift({ ...record, id: 'local-' + Date.now() }); }
+    } else { if (files.length) toast('โหมดตัวอย่างไม่สามารถจัดเก็บภาพถาวรได้', true); assets.unshift({ ...record, id: 'local-' + Date.now() }); }
     close(); renderContent(); renderIcons(); toast('เพิ่มครุภัณฑ์เรียบร้อย');
   };
 }
