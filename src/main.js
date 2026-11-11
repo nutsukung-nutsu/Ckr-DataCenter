@@ -73,6 +73,14 @@ function applySystemOptions() {
   }
 }
 function saveDemoSystemOptions() { if (!supabase) localStorage.setItem('bcn-ckr-system-options', JSON.stringify(systemOptions)); }
+async function refreshSystemOptionType(type) {
+  if (!supabase || !session?.user) return true;
+  const { data, error } = await supabase.from('system_options').select('*').eq('option_type', type).order('sort_order').order('value');
+  if (error) { toast(`ตรวจสอบรายการ${catalogGroups.find(group => group[0] === type)?.[1] || ''}ไม่ได้: ${error.message}`, true); return false; }
+  systemOptions = [...systemOptions.filter(option => option.option_type !== type), ...(data || [])];
+  applySystemOptions();
+  return true;
+}
 async function loadSystemOptions() {
   if (!supabase || !session?.user) { systemOptions = loadDemoSystemOptions(); applySystemOptions(); return; }
   const { data, error } = await supabase.from('system_options').select('*').order('option_type').order('sort_order').order('value');
@@ -90,10 +98,10 @@ async function addSystemOption(type, rawValue) {
   const value = String(rawValue || '').trim().replace(/\s+/g, ' ');
   if (!canManageSettings()) return toast('เฉพาะ Super Admin แก้ไขรายการตั้งค่าได้', true);
   if (!value || value.length > 100) return toast('กรอกชื่อรายการไม่เกิน 100 ตัวอักษร', true);
+  if (!await refreshSystemOptionType(type)) return;
   const existing = systemOptions.find(option => option.option_type === type && option.value.toLocaleLowerCase() === value.toLocaleLowerCase());
   if (existing?.is_active !== false) {
-    if (supabase && session?.user) { await loadSystemOptions(); renderApp(); }
-    return toast('มีรายการนี้อยู่แล้ว · อัปเดตรายการจากฐานข้อมูลแล้ว', true);
+    renderApp(); return toast('มีรายการนี้อยู่แล้ว · รายการปัจจุบันแสดงอยู่ในหน้านี้', true);
   }
   if (existing) {
     if (supabase && session?.user) { const { error } = await supabase.from('system_options').update({ is_active: true }).eq('id', existing.id); if (error) return toast(`เปิดใช้รายการไม่ได้: ${error.message}`, true); }
@@ -162,6 +170,7 @@ function downloadCatalogCsvTemplate(type) {
 async function importCatalogCsv(type, file) {
   if (!catalogCsvTypes.has(type) || !file || !canManageSettings()) return;
   if (file.size > 2 * 1024 * 1024) return toast('ไฟล์ CSV ต้องมีขนาดไม่เกิน 2 MB', true);
+  if (!await refreshSystemOptionType(type)) return;
   const { values, invalidCount, duplicateCount } = catalogCsvRows(await file.text());
   if (!values.length) return toast('ไม่พบรายการที่นำเข้าได้ · ใช้คอลัมน์ value หรือชื่อรายการ', true);
   const existingByValue = new Map(systemOptions.filter(option => option.option_type === type).map(option => [option.value.toLocaleLowerCase(), option]));
@@ -174,7 +183,6 @@ async function importCatalogCsv(type, file) {
     else pending.push(value);
   }
   if (!pending.length && !toReactivate.length) {
-    if (supabase && session?.user) await loadSystemOptions();
     renderApp(); return toast(`รายการในไฟล์มีอยู่แล้ว ${alreadyActiveCount} รายการ · อัปเดตหน้าจอแล้ว`, true);
   }
   const nextOrder = Math.max(-1, ...systemOptions.filter(option => option.option_type === type).map(option => Number(option.sort_order) || 0)) + 1;
