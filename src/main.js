@@ -91,16 +91,116 @@ async function addSystemOption(type, rawValue) {
   if (!canManageSettings()) return toast('เฉพาะ Super Admin แก้ไขรายการตั้งค่าได้', true);
   if (!value || value.length > 100) return toast('กรอกชื่อรายการไม่เกิน 100 ตัวอักษร', true);
   const existing = systemOptions.find(option => option.option_type === type && option.value.toLocaleLowerCase() === value.toLocaleLowerCase());
-  if (existing?.is_active !== false) return toast('มีรายการนี้อยู่แล้ว', true);
+  if (existing?.is_active !== false) {
+    if (supabase && session?.user) { await loadSystemOptions(); renderApp(); }
+    return toast('มีรายการนี้อยู่แล้ว · อัปเดตรายการจากฐานข้อมูลแล้ว', true);
+  }
   if (existing) {
     if (supabase && session?.user) { const { error } = await supabase.from('system_options').update({ is_active: true }).eq('id', existing.id); if (error) return toast(`เปิดใช้รายการไม่ได้: ${error.message}`, true); }
     existing.is_active = true;
   } else {
     const record = { option_type: type, value, is_active: true, sort_order: Math.max(-1, ...systemOptions.filter(option => option.option_type === type).map(option => Number(option.sort_order) || 0)) + 1 };
-    if (supabase && session?.user) { const { data, error } = await supabase.from('system_options').insert({ ...record, created_by: session.user.id }).select().single(); if (error) return toast(`เพิ่มรายการไม่ได้: ${error.message}`, true); systemOptions.push(data); }
+    if (supabase && session?.user) {
+      const { data, error } = await supabase.from('system_options').insert({ ...record, created_by: session.user.id }).select().single();
+      if (error) {
+        if (error.code === '23505') { await loadSystemOptions(); renderApp(); return toast('มีรายการนี้อยู่แล้ว · อัปเดตรายการจากฐานข้อมูลแล้ว', true); }
+        return toast(`เพิ่มรายการไม่ได้: ${error.message}`, true);
+      }
+      systemOptions.push(data);
+    }
     else systemOptions.push({ ...record, id: `local-${type}-${Date.now()}` });
   }
   saveDemoSystemOptions(); applySystemOptions(); renderApp(); toast('เพิ่มรายการตั้งค่าแล้ว');
+}
+const catalogCsvTypes = new Set(['locations', 'departments', 'buildings', 'assignees']);
+function parseCatalogCsv(text) {
+  const rows = []; let row = [], cell = '', quoted = false;
+  const source = String(text || '').replace(/^\uFEFF/, '');
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (quoted) {
+      if (char === '"' && source[index + 1] === '"') { cell += '"'; index += 1; }
+      else if (char === '"') quoted = false;
+      else cell += char;
+    } else if (char === '"') quoted = true;
+    else if (char === ',') { row.push(cell); cell = ''; }
+    else if (char === '\n' || char === '\r') {
+      if (char === '\r' && source[index + 1] === '\n') index += 1;
+      row.push(cell); if (row.some(value => value.trim())) rows.push(row);
+      row = []; cell = '';
+    } else cell += char;
+  }
+  row.push(cell); if (row.some(value => value.trim())) rows.push(row);
+  return rows;
+}
+function catalogCsvRows(text) {
+  const rows = parseCatalogCsv(text);
+  if (!rows.length) return { values: [], headerSkipped: 0, invalidCount: 0, duplicateCount: 0 };
+  const recognized = new Set(['value', 'name', 'รายการ', 'ชื่อ', 'ชื่อรายการ', 'สถานที่', 'สถานที่ใช้งาน/จัดเก็บ', 'หน่วยงาน', 'อาคาร', 'ผู้รับผิดชอบ']);
+  const headers = rows[0].map(value => value.trim().toLocaleLowerCase());
+  const column = headers.findIndex(value => recognized.has(value));
+  const dataRows = column >= 0 ? rows.slice(1) : rows;
+  const valueColumn = column >= 0 ? column : 0;
+  const seen = new Set(), values = [];
+  let invalidCount = 0, duplicateCount = 0;
+  for (const item of dataRows) {
+    const value = String(item[valueColumn] || '').trim().replace(/\s+/g, ' ');
+    if (!value || value.length > 100) { if (value) invalidCount += 1; continue; }
+    const normalized = value.toLocaleLowerCase();
+    if (seen.has(normalized)) { duplicateCount += 1; continue; }
+    seen.add(normalized); values.push(value);
+  }
+  return { values, headerSkipped: column >= 0 ? 1 : 0, invalidCount, duplicateCount };
+}
+function downloadCatalogCsvTemplate(type) {
+  if (!catalogCsvTypes.has(type)) return;
+  const csv = '\ufeffvalue\r\n';
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const link = Object.assign(document.createElement('a'), { href: url, download: `CKR-${type}-template.csv` });
+  link.click(); URL.revokeObjectURL(url); toast('ดาวน์โหลดแบบฟอร์ม CSV แล้ว');
+}
+async function importCatalogCsv(type, file) {
+  if (!catalogCsvTypes.has(type) || !file || !canManageSettings()) return;
+  if (file.size > 2 * 1024 * 1024) return toast('ไฟล์ CSV ต้องมีขนาดไม่เกิน 2 MB', true);
+  const { values, invalidCount, duplicateCount } = catalogCsvRows(await file.text());
+  if (!values.length) return toast('ไม่พบรายการที่นำเข้าได้ · ใช้คอลัมน์ value หรือชื่อรายการ', true);
+  const existingByValue = new Map(systemOptions.filter(option => option.option_type === type).map(option => [option.value.toLocaleLowerCase(), option]));
+  let alreadyActiveCount = 0;
+  const pending = [], toReactivate = [];
+  for (const value of values) {
+    const existing = existingByValue.get(value.toLocaleLowerCase());
+    if (existing?.is_active !== false && existing) alreadyActiveCount += 1;
+    else if (existing) toReactivate.push(existing);
+    else pending.push(value);
+  }
+  if (!pending.length && !toReactivate.length) {
+    if (supabase && session?.user) await loadSystemOptions();
+    renderApp(); return toast(`รายการในไฟล์มีอยู่แล้ว ${alreadyActiveCount} รายการ · อัปเดตหน้าจอแล้ว`, true);
+  }
+  const nextOrder = Math.max(-1, ...systemOptions.filter(option => option.option_type === type).map(option => Number(option.sort_order) || 0)) + 1;
+  const records = [...toReactivate.map(option => ({ option_type: type, value: option.value, is_active: true, sort_order: option.sort_order })), ...pending.map((value, index) => ({ option_type: type, value, is_active: true, sort_order: nextOrder + index, ...(session?.user?.id ? { created_by: session.user.id } : {}) }))];
+  let imported = 0, reactivated = 0;
+  if (supabase && session?.user) {
+    const inactiveValues = new Set(systemOptions.filter(option => option.option_type === type && option.is_active === false).map(option => option.value.toLocaleLowerCase()));
+    for (let offset = 0; offset < records.length; offset += 500) {
+      const { data, error } = await supabase.from('system_options').upsert(records.slice(offset, offset + 500), { onConflict: 'option_type,value' }).select();
+      if (error) return toast(`นำเข้า CSV ไม่สำเร็จ: ${error.message}`, true);
+      for (const item of data || []) {
+        const index = systemOptions.findIndex(existing => existing.option_type === item.option_type && existing.value === item.value);
+        if (index >= 0) { const wasInactive = systemOptions[index].is_active === false; systemOptions[index] = item; if (wasInactive) reactivated += 1; }
+        else { systemOptions.push(item); imported += 1; }
+      }
+    }
+  } else {
+    for (const record of records) {
+      const existingIndex = systemOptions.findIndex(option => option.option_type === type && option.value.toLocaleLowerCase() === record.value.toLocaleLowerCase());
+      if (existingIndex >= 0) { systemOptions[existingIndex].is_active = true; reactivated += 1; }
+      else { systemOptions.push({ ...record, id: `local-${type}-${Date.now()}-${imported}` }); imported += 1; }
+    }
+  }
+  saveDemoSystemOptions(); applySystemOptions(); renderApp();
+  const skipped = alreadyActiveCount + invalidCount + duplicateCount;
+  toast(`นำเข้าแล้ว ${imported} รายการ${reactivated ? ` · เปิดใช้อีกครั้ง ${reactivated}` : ''}${skipped ? ` · ข้าม ${skipped}` : ''}`);
 }
 async function toggleSystemOption(id, active) {
   const option = systemOptions.find(item => String(item.id) === String(id)); if (!option || !canManageSettings()) return;
@@ -126,9 +226,12 @@ async function editSystemOption(id, rawValue) {
 }
 async function renderSettings(content) {
   const canEdit = canManageSettings();
-  content.innerHTML = `<div class="page-heading"><div><span class="section-kicker">SYSTEM CONFIGURATION</span><h1>ตั้งค่าระบบ</h1><p>จัดการรายการที่ใช้เลือกในทะเบียนครุภัณฑ์และคลังวัสดุ</p></div><button class="button secondary" id="refresh-system-options">${icon('rotate-cw', 15)} รีเฟรช</button></div>${!canEdit ? '<div class="settings-readonly">สิทธิ์ผู้ดูข้อมูล · ติดต่อ Super Admin หากต้องการแก้ไขรายการ</div>' : ''}<section class="settings-grid">${catalogGroups.map(([type, title, description]) => `<article class="panel catalog-card"><div class="catalog-card-heading"><div><h3>${title}</h3><p>${description}</p></div><span class="catalog-count">${systemOptions.filter(option => option.option_type === type && option.is_active !== false).length} รายการ</span></div>${canEdit ? `<form class="catalog-add-form" data-option-type="${type}"><input name="value" maxlength="100" placeholder="เพิ่ม${title}" aria-label="เพิ่ม${title}" /><button type="submit" class="button primary">เพิ่ม</button></form>` : ''}<div class="catalog-option-list">${systemOptions.filter(option => option.option_type === type).map(option => `<div class="catalog-option ${option.is_active === false ? 'inactive' : ''}" data-catalog-row="${escapeHtml(option.id)}"><span class="catalog-option-value">${escapeHtml(option.value)}</span>${canEdit ? `<div class="catalog-option-actions"><button type="button" class="catalog-edit" data-option-id="${escapeHtml(option.id)}">แก้ไข</button><button type="button" class="catalog-toggle" data-option-id="${escapeHtml(option.id)}" data-next-active="${option.is_active === false}" aria-label="${option.is_active === false ? 'เปิดใช้' : 'ปิดใช้'} ${escapeHtml(option.value)}">${option.is_active === false ? 'เปิดใช้' : 'ปิดใช้'}</button></div>` : ''}</div>`).join('') || '<span class="catalog-empty">ยังไม่มีรายการ · เพิ่มรายการด้านบน</span>'}</div></article>`).join('')}</section><p class="settings-footnote">การปิดใช้จะซ่อนรายการจากตัวเลือกใหม่ แต่ข้อมูลครุภัณฑ์และวัสดุเดิมยังคงอยู่</p>`;
+  content.innerHTML = `<div class="page-heading"><div><span class="section-kicker">SYSTEM CONFIGURATION</span><h1>ตั้งค่าระบบ</h1><p>จัดการรายการที่ใช้เลือกในทะเบียนครุภัณฑ์และคลังวัสดุ</p></div><button class="button secondary" id="refresh-system-options">${icon('rotate-cw', 15)} รีเฟรช</button></div>${!canEdit ? '<div class="settings-readonly">สิทธิ์ผู้ดูข้อมูล · ติดต่อ Super Admin หากต้องการแก้ไขรายการ</div>' : ''}<section class="settings-grid">${catalogGroups.map(([type, title, description]) => `<article class="panel catalog-card"><div class="catalog-card-heading"><div><h3>${title}</h3><p>${description}</p></div><span class="catalog-count">${systemOptions.filter(option => option.option_type === type && option.is_active !== false).length} รายการ</span></div>${canEdit ? `<form class="catalog-add-form" data-option-type="${type}"><input name="value" maxlength="100" placeholder="เพิ่ม${title}" aria-label="เพิ่ม${title}" /><button type="submit" class="button primary">เพิ่ม</button></form>${catalogCsvTypes.has(type) ? `<div class="catalog-import-tools"><button type="button" class="catalog-import-button" data-import-type="${type}">${icon('file-up', 15)} นำเข้า CSV</button><button type="button" class="catalog-template-button" data-template-type="${type}">${icon('file-down', 15)} แบบฟอร์ม CSV</button><input type="file" accept=".csv,text/csv" data-catalog-file="${type}" hidden /></div>` : ''}` : ''}<div class="catalog-option-list">${systemOptions.filter(option => option.option_type === type).map(option => `<div class="catalog-option ${option.is_active === false ? 'inactive' : ''}" data-catalog-row="${escapeHtml(option.id)}"><span class="catalog-option-value">${escapeHtml(option.value)}</span>${canEdit ? `<div class="catalog-option-actions"><button type="button" class="catalog-edit" data-option-id="${escapeHtml(option.id)}">แก้ไข</button><button type="button" class="catalog-toggle" data-option-id="${escapeHtml(option.id)}" data-next-active="${option.is_active === false}" aria-label="${option.is_active === false ? 'เปิดใช้' : 'ปิดใช้'} ${escapeHtml(option.value)}">${option.is_active === false ? 'เปิดใช้' : 'ปิดใช้'}</button></div>` : ''}</div>`).join('') || '<span class="catalog-empty">ยังไม่มีรายการ · เพิ่มรายการด้านบน</span>'}</div></article>`).join('')}</section><p class="settings-footnote">การปิดใช้จะซ่อนรายการจากตัวเลือกใหม่ แต่ข้อมูลครุภัณฑ์และวัสดุเดิมยังคงอยู่ · CSV ใช้คอลัมน์ value หรือชื่อรายการ หนึ่งรายการต่อบรรทัด</p>`;
   content.querySelector('#refresh-system-options').addEventListener('click', async () => { await loadSystemOptions(); renderApp(); toast('อัปเดตรายการตั้งค่าแล้ว'); });
   content.querySelectorAll('.catalog-add-form').forEach(form => form.addEventListener('submit', async event => { event.preventDefault(); await addSystemOption(form.dataset.optionType, new FormData(form).get('value')); }));
+  content.querySelectorAll('.catalog-import-button').forEach(button => button.addEventListener('click', () => content.querySelector(`[data-catalog-file="${button.dataset.importType}"]`)?.click()));
+  content.querySelectorAll('.catalog-template-button').forEach(button => button.addEventListener('click', () => downloadCatalogCsvTemplate(button.dataset.templateType)));
+  content.querySelectorAll('[data-catalog-file]').forEach(input => input.addEventListener('change', async () => { const file = input.files?.[0]; input.value = ''; if (file) await importCatalogCsv(input.dataset.catalogFile, file); }));
   content.querySelectorAll('.catalog-toggle').forEach(button => button.addEventListener('click', () => toggleSystemOption(button.dataset.optionId, button.dataset.nextActive === 'true')));
   content.querySelectorAll('.catalog-edit').forEach(button => button.addEventListener('click', () => {
     const option = systemOptions.find(item => String(item.id) === button.dataset.optionId), row = button.closest('.catalog-option'); if (!option || !row) return;
