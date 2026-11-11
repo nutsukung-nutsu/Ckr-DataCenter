@@ -194,10 +194,10 @@ function thaiFiscalYear(dateValue) {
 }
 function openAssetModal() {
   const modal = document.createElement('div'); modal.className = 'modal-backdrop';
-  const fieldLabel = (name, text, tone = 'teal') => '<label class="field-label"><span class="field-icon ' + tone + '">' + icon(name, 14) + '</span>' + text + '</label>';
+  const fieldLabel = (_name, text) => '<label class="field-label">' + text + '</label>';
   const categories = assetCategories.map(item => '<option>' + escapeHtml(item) + '</option>').join('');
   const statuses = statusMetrics.map(item => '<option>' + escapeHtml(item.name) + '</option>').join('');
-  modal.innerHTML = '<section class="asset-modal"><div class="modal-head"><div><span class="section-kicker">ASSET REGISTRY</span><h2>เพิ่มครุภัณฑ์ใหม่</h2></div><button class="icon-button" id="close-modal">' + icon('x', 19) + '</button></div>' +
+  modal.innerHTML = '<section class="asset-modal"><div class="modal-head"><div><span class="section-kicker">ASSET REGISTRY</span><h2>เพิ่มครุภัณฑ์ใหม่</h2></div><button class="icon-button" id="close-modal" aria-label="ปิด">×</button></div>' +
     '<form id="asset-form"><div class="form-grid">' +
     '<div class="field">' + fieldLabel('barcode', 'เลขครุภัณฑ์', 'blue') + '<input name="asset_code" placeholder="เช่น 7440-001-001/1" /></div>' +
     '<div class="field">' + fieldLabel('package', 'ชื่อผลิตภัณฑ์', 'violet') + '<input name="name" placeholder="ชื่อผลิตภัณฑ์" /></div>' +
@@ -210,12 +210,12 @@ function openAssetModal() {
     '<div class="field">' + fieldLabel('building', 'อาคาร', 'amber') + '<input name="building" placeholder="เช่น อาคาร 1" /></div>' +
     '<div class="field">' + fieldLabel('user-round', 'ผู้รับผิดชอบ', 'violet') + '<input name="assignee" placeholder="ชื่อผู้รับผิดชอบ" /></div>' +
     '<div class="field">' + fieldLabel('shield-check', 'สถานะ', 'mint') + '<select name="status">' + statuses + '</select></div>' +
-    '<div class="field image-field">' + fieldLabel('image', 'ภาพอุปกรณ์', 'teal') + '<div class="image-actions"><button type="button" class="image-action image-action-camera" id="take-asset-photo">' + icon('camera', 16) + ' ถ่ายรูปใหม่</button><button type="button" class="image-action" id="choose-asset-image">' + icon('images', 16) + ' เลือกจากเครื่อง</button></div><input id="asset-image" type="file" accept="image/jpeg,image/png,image/webp" hidden /><input id="asset-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden /><div id="asset-image-preview" class="asset-image-preview" tabindex="0"><span>' + icon('clipboard', 15) + ' วางรูปภาพด้วย Ctrl+V หรือเลือกรูป JPG, PNG, WebP ไม่เกิน 10 MB</span></div><small>จัดเก็บแยกโฟลเดอร์ตามประเภท และตั้งชื่อด้วยเลขครุภัณฑ์กับผลิตภัณฑ์</small></div>' +
+    '<div class="field image-field">' + fieldLabel('image', 'ภาพอุปกรณ์') + '<div class="image-actions"><button type="button" class="image-action image-action-camera" id="take-asset-photo">ถ่ายรูปใหม่</button><button type="button" class="image-action" id="choose-asset-image">เลือกจากเครื่อง</button></div><input id="asset-image" type="file" accept="image/jpeg,image/png,image/webp" hidden /><input id="asset-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden /><div id="asset-image-preview" class="asset-image-preview" tabindex="0"><span>วางรูปภาพด้วย Ctrl+V หรือเลือกรูป JPG, PNG, WebP ไม่เกิน 10 MB</span></div><small>จัดเก็บแยกโฟลเดอร์ตามประเภท และตั้งชื่อด้วยเลขครุภัณฑ์กับผลิตภัณฑ์</small></div>' +
     '</div><details class="optional-asset-details"><summary>ข้อมูลเพิ่มเติม</summary><div class="form-grid">' +
     '<div class="field">' + fieldLabel('tag', 'ยี่ห้อ / รุ่น', 'blue') + '<input name="brand" placeholder="ระบุยี่ห้อและรุ่น" /></div>' +
     '<div class="field">' + fieldLabel('hard-drive', 'หมายเลขเครื่อง (S/N)', 'teal') + '<input name="serial_number" placeholder="Serial number" /></div>' +
     '<div class="field">' + fieldLabel('banknote', 'ราคาจัดซื้อ (บาท)', 'amber') + '<input name="price" type="number" min="0" step="0.01" placeholder="0.00" /></div>' +
-    '</div></details><div class="modal-actions"><button type="button" class="button secondary" id="cancel-modal">ยกเลิก</button><button type="submit" class="button primary" id="save-asset">' + icon('plus', 16) + ' บันทึกครุภัณฑ์</button></div></form></section>';
+    '</div></details><div class="modal-actions"><button type="button" class="button secondary" id="cancel-modal">ยกเลิก</button><button type="submit" class="button primary" id="save-asset">บันทึกครุภัณฑ์</button></div></form></section>';
   document.body.append(modal); renderIcons();
   const form = modal.querySelector('#asset-form'), imageInput = modal.querySelector('#asset-image'), cameraInput = modal.querySelector('#asset-camera');
   const preview = modal.querySelector('#asset-image-preview'), saveButton = modal.querySelector('#save-asset');
@@ -248,12 +248,12 @@ function openAssetModal() {
       const ext = file.type === 'image/jpeg' ? 'jpg' : file.type === 'image/png' ? 'png' : 'webp';
       path = cleanPathPart(record.category || 'อื่น ๆ') + '/' + cleanPathPart(record.asset_code || 'ไม่ระบุเลข') + '-' + cleanPathPart(record.name || 'ไม่ระบุชื่อ') + '.' + ext;
       const { error: uploadError } = await supabase.storage.from('it-asset-images').upload(path, file, { contentType: file.type, upsert: false });
-      if (uploadError) { toast('อัปโหลดภาพไม่สำเร็จ: ' + uploadError.message, true); saveButton.disabled = false; saveButton.innerHTML = icon('plus', 16) + ' บันทึกครุภัณฑ์'; renderIcons(); return; }
+      if (uploadError) { toast('อัปโหลดภาพไม่สำเร็จ: ' + uploadError.message, true); saveButton.disabled = false; saveButton.textContent = 'บันทึกครุภัณฑ์'; return; }
       record.image_path = path;
     }
     if (supabase && session?.user) {
       const { data, error } = await supabase.from('it_assets').insert({ ...record, created_by: session.user.id }).select().single();
-      if (error) { if (path) await supabase.storage.from('it-asset-images').remove([path]); toast('บันทึกไม่สำเร็จ: ' + error.message, true); saveButton.disabled = false; saveButton.innerHTML = icon('plus', 16) + ' บันทึกครุภัณฑ์'; renderIcons(); return; }
+      if (error) { if (path) await supabase.storage.from('it-asset-images').remove([path]); toast('บันทึกไม่สำเร็จ: ' + error.message, true); saveButton.disabled = false; saveButton.textContent = 'บันทึกครุภัณฑ์'; return; }
       assets.unshift(data);
     } else { if (file) toast('โหมดตัวอย่างไม่สามารถจัดเก็บภาพถาวรได้', true); assets.unshift({ ...record, id: 'local-' + Date.now() }); }
     close(); renderContent(); renderIcons(); toast('เพิ่มครุภัณฑ์เรียบร้อย');
