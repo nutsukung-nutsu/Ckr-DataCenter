@@ -515,19 +515,20 @@ function openAssetModal() {
   const floors = selectOptions(catalogs.floors, catalogs.floors.length ? 'เลือกชั้น' : 'เพิ่มชั้นในตั้งค่าระบบ');
   const buildings = selectOptions(catalogs.buildings, catalogs.buildings.length ? 'เลือกอาคาร' : 'เพิ่มอาคารในตั้งค่าระบบ');
   const assignees = selectOptions([], 'เลือกหน่วยงานก่อน');
+  const searchableSelect = (name, options, placeholder, disabled = false) => '<div class="searchable-select" data-searchable-select="' + name + '"><select name="' + name + '"' + (disabled ? ' disabled' : '') + '>' + options + '</select><button type="button" class="searchable-select-trigger" aria-haspopup="listbox" aria-expanded="false"' + (disabled ? ' disabled' : '') + '><span>' + placeholder + '</span><span aria-hidden="true">⌄</span></button><div class="searchable-select-menu" hidden><input type="search" class="searchable-select-search" placeholder="ค้นหา..." aria-label="ค้นหา' + placeholder + '" autocomplete="off"><div class="searchable-select-options" role="listbox"></div></div></div>';
   modal.innerHTML = '<section class="asset-modal"><div class="modal-head"><div><span class="section-kicker">ASSET REGISTRY</span><h2>เพิ่มครุภัณฑ์ใหม่</h2></div><button class="icon-button" id="close-modal" aria-label="ปิด">×</button></div>' +
     '<form id="asset-form"><div class="form-grid">' +
     '<div class="field">' + fieldLabel('barcode', 'เลขครุภัณฑ์', 'blue') + '<input name="asset_code" placeholder="เช่น 7440-001-001/1" /></div>' +
     '<div class="field">' + fieldLabel('package', 'ชื่อผลิตภัณฑ์', 'violet') + '<input name="name" placeholder="ชื่อผลิตภัณฑ์" /></div>' +
-    '<div class="field">' + fieldLabel('tags', 'ประเภท', 'amber') + '<select name="category">' + categories + '</select></div>' +
+    '<div class="field">' + fieldLabel('tags', 'ประเภท', 'amber') + searchableSelect('category', categories, 'เลือกประเภทครุภัณฑ์') + '</div>' +
     '<div class="field">' + fieldLabel('calendar-days', 'วันที่ได้รับ', 'blue') + '<input name="received_date" type="date" /></div>' +
     '<div class="field">' + fieldLabel('calendar-range', 'ปีงบประมาณ', 'violet') + '<input name="fiscal_year" type="number" min="2500" max="3000" placeholder="เช่น 2569" /></div>' +
-    '<div class="field">' + fieldLabel('map-pin', 'สถานที่', 'mint') + '<select name="location">' + locations + '</select></div>' +
-    '<div class="field">' + fieldLabel('landmark', 'หน่วยงาน', 'teal') + '<select name="department">' + departments + '</select></div>' +
-    '<div class="field">' + fieldLabel('layers', 'ชั้น', 'blue') + '<select name="floor">' + floors + '</select></div>' +
-    '<div class="field">' + fieldLabel('building', 'อาคาร', 'amber') + '<select name="building">' + buildings + '</select></div>' +
-    '<div class="field assignee-picker-field">' + fieldLabel('user-round', 'ผู้รับผิดชอบ (อยู่ภายใต้หน่วยงาน)', 'violet') + '<select name="assignee" disabled>' + assignees + '</select><input name="assigneeSearch" type="search" placeholder="เลือกหน่วยงานก่อนค้นหารายชื่อ" aria-label="ค้นหารายชื่อผู้รับผิดชอบ" autocomplete="off" disabled /><small class="assignee-picker-hint">ตั้งชื่อและประเภทได้ที่ ตั้งค่าระบบ → สถานที่และหน่วยงาน → ขยายหน่วยงานที่ต้องการ</small></div>' +
-    '<div class="field">' + fieldLabel('shield-check', 'สถานะ', 'mint') + '<select name="status">' + statuses + '</select></div>' +
+    '<div class="field">' + fieldLabel('map-pin', 'สถานที่', 'mint') + searchableSelect('location', locations, 'เลือกสถานที่') + '</div>' +
+    '<div class="field">' + fieldLabel('landmark', 'หน่วยงาน', 'teal') + searchableSelect('department', departments, 'เลือกหน่วยงาน') + '</div>' +
+    '<div class="field">' + fieldLabel('layers', 'ชั้น', 'blue') + searchableSelect('floor', floors, 'เลือกชั้น') + '</div>' +
+    '<div class="field">' + fieldLabel('building', 'อาคาร', 'amber') + searchableSelect('building', buildings, 'เลือกอาคาร') + '</div>' +
+    '<div class="field assignee-picker-field">' + fieldLabel('user-round', 'ผู้รับผิดชอบ (อยู่ภายใต้หน่วยงาน)', 'violet') + searchableSelect('assignee', assignees, 'เลือกหน่วยงานก่อน', true) + '<small class="assignee-picker-hint">ตั้งชื่อและประเภทได้ที่ ตั้งค่าระบบ → สถานที่และหน่วยงาน → ขยายหน่วยงานที่ต้องการ</small></div>' +
+    '<div class="field">' + fieldLabel('shield-check', 'สถานะ', 'mint') + searchableSelect('status', statuses, 'เลือกสถานะ') + '</div>' +
     '<div class="field image-field">' + fieldLabel('image', 'ภาพอุปกรณ์ (สูงสุด 2 ภาพ)') + '<div class="image-actions"><button type="button" class="image-action image-action-camera" id="take-asset-photo">ถ่ายรูปใหม่</button><button type="button" class="image-action" id="choose-asset-image">เลือกจากเครื่อง</button></div><input id="asset-image" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden /><input id="asset-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden /><div id="asset-image-preview" class="asset-image-preview" tabindex="0"><span>วางรูปภาพด้วย Ctrl+V หรือเลือกรูป JPG, PNG, WebP ไม่เกิน 10 MB</span></div><small>เลือกรูปได้ 1–2 ภาพ · จัดเก็บแยกตามหมวดหมู่และเลขครุภัณฑ์</small></div>' +
     '</div><details class="optional-asset-details"><summary>ข้อมูลเพิ่มเติม</summary><div class="form-grid">' +
     '<div class="field">' + fieldLabel('tag', 'ยี่ห้อ / รุ่น', 'blue') + '<input name="brand" placeholder="ระบุยี่ห้อและรุ่น" /></div>' +
@@ -535,27 +536,44 @@ function openAssetModal() {
     '</div></details><div class="modal-actions"><button type="button" class="button secondary" id="cancel-modal">ยกเลิก</button><button type="submit" class="button primary" id="save-asset">บันทึกครุภัณฑ์</button></div></form></section>';
   document.body.append(modal); renderIcons();
   const form = modal.querySelector('#asset-form'), imageInput = modal.querySelector('#asset-image'), cameraInput = modal.querySelector('#asset-camera');
+  const refreshSearchableSelect = wrapper => {
+    const select = wrapper.querySelector('select'), trigger = wrapper.querySelector('.searchable-select-trigger'), menu = wrapper.querySelector('.searchable-select-menu'), search = wrapper.querySelector('.searchable-select-search'), optionsBox = wrapper.querySelector('.searchable-select-options');
+    const selected = select.selectedOptions[0];
+    trigger.disabled = select.disabled;
+    trigger.querySelector('span').textContent = selected?.value ? selected.textContent : (select.options[0]?.textContent || 'เลือก');
+    search.value = '';
+    const query = search.value.trim().toLocaleLowerCase();
+    const options = Array.from(select.options).slice(1).filter(option => option.textContent.toLocaleLowerCase().includes(query));
+    optionsBox.innerHTML = options.map(option => '<button type="button" role="option" aria-selected="' + (option.value === select.value) + '" data-value="' + escapeHtml(option.value) + '">' + escapeHtml(option.textContent) + '</button>').join('') || '<span class="searchable-select-empty">ไม่พบรายการ</span>';
+  };
+  const refreshAllSearchableSelects = () => modal.querySelectorAll('.searchable-select').forEach(refreshSearchableSelect);
+  modal.querySelectorAll('.searchable-select').forEach(wrapper => {
+    const select = wrapper.querySelector('select'), trigger = wrapper.querySelector('.searchable-select-trigger'), menu = wrapper.querySelector('.searchable-select-menu'), search = wrapper.querySelector('.searchable-select-search'), optionsBox = wrapper.querySelector('.searchable-select-options');
+    refreshSearchableSelect(wrapper);
+    trigger.addEventListener('click', () => { modal.querySelectorAll('.searchable-select-menu').forEach(other => { if (other !== menu) { other.hidden = true; other.parentElement.querySelector('.searchable-select-trigger').setAttribute('aria-expanded', 'false'); } }); menu.hidden = !menu.hidden; trigger.setAttribute('aria-expanded', String(!menu.hidden)); if (!menu.hidden) { refreshSearchableSelect(wrapper); search.focus(); } });
+    search.addEventListener('input', () => { const query = search.value.trim().toLocaleLowerCase(); const options = Array.from(select.options).slice(1).filter(option => option.textContent.toLocaleLowerCase().includes(query)); optionsBox.innerHTML = options.map(option => '<button type="button" role="option" aria-selected="' + (option.value === select.value) + '" data-value="' + escapeHtml(option.value) + '">' + escapeHtml(option.textContent) + '</button>').join('') || '<span class="searchable-select-empty">ไม่พบรายการ</span>'; });
+    optionsBox.addEventListener('click', event => { const optionButton = event.target.closest('[data-value]'); if (!optionButton) return; select.value = optionButton.dataset.value; select.dispatchEvent(new Event('change', { bubbles: true })); refreshSearchableSelect(wrapper); menu.hidden = true; trigger.setAttribute('aria-expanded', 'false'); trigger.focus(); });
+    select.addEventListener('change', () => refreshSearchableSelect(wrapper));
+  });
+  modal.addEventListener('click', event => { if (!event.target.closest('.searchable-select')) modal.querySelectorAll('.searchable-select-menu').forEach(menu => { menu.hidden = true; menu.parentElement.querySelector('.searchable-select-trigger').setAttribute('aria-expanded', 'false'); }); });
   let departmentAssignees = [];
   const renderAssigneeOptions = (preserveSelection = false) => {
-    const select = form.elements.assignee, search = form.elements.assigneeSearch;
+    const select = form.elements.assignee;
     const previous = preserveSelection ? select.value : '';
-    const query = search.value.trim().toLocaleLowerCase();
-    const matches = departmentAssignees.filter(option => option.value.toLocaleLowerCase().includes(query));
-    select.innerHTML = selectOptions(matches.map(option => option.value), departmentAssignees.length ? (matches.length ? 'เลือกผู้รับผิดชอบ' : 'ไม่พบรายชื่อที่ค้นหา') : 'ไม่พบรายชื่อในหน่วยงานนี้');
+    const matches = departmentAssignees;
+    select.innerHTML = selectOptions(matches.map(option => option.value), departmentAssignees.length ? 'เลือกผู้รับผิดชอบ' : 'ไม่พบรายชื่อในหน่วยงานนี้');
     select.disabled = !departmentAssignees.length;
     if (previous && matches.some(option => option.value === previous)) select.value = previous;
+    refreshSearchableSelect(select.closest('.searchable-select'));
     const hint = form.querySelector('.assignee-picker-hint');
     hint.textContent = departmentAssignees.length ? `พบ ${departmentAssignees.length} รายชื่อในหน่วยงานนี้` : 'ยังไม่มีรายชื่อผู้รับผิดชอบในหน่วยงานนี้';
   };
   const updateAssigneeOptions = () => {
     const department = systemOptions.find(option => option.option_type === 'departments' && option.value === form.elements.department.value);
     departmentAssignees = systemOptions.filter(option => option.option_type === 'assignees' && option.is_active !== false && department && String(option.department_id || '') === String(department.id));
-    form.elements.assigneeSearch.value = '';
-    form.elements.assigneeSearch.disabled = !department;
     renderAssigneeOptions();
   };
   form.elements.department.addEventListener('change', updateAssigneeOptions);
-  form.elements.assigneeSearch.addEventListener('input', () => renderAssigneeOptions(true));
   const preview = modal.querySelector('#asset-image-preview'), saveButton = modal.querySelector('#save-asset');
   const selectedImages = [null, null];
   const previewUrls = new Map();
