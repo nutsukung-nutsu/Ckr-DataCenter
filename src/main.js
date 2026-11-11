@@ -19,7 +19,7 @@ let assets = loadDemoAssets();
 let session = null;
 let userRole = null;
 const defaultCatalogs = {
-  asset_categories: ['คอมพิวเตอร์', 'ไฟฟ้าและวิทยุ', 'โฆษณาและเผยแพร่', 'อื่น ๆ'], locations: [], departments: [], buildings: [], floors: [], assignees: [],
+  asset_categories: ['คอมพิวเตอร์', 'ไฟฟ้าและวิทยุ', 'โฆษณาและเผยแพร่', 'อื่น ๆ'], asset_statuses: ['พร้อมใช้งาน', 'กำลังใช้งาน', 'เครื่องสำรอง', 'ซ่อมบำรุง', 'รอแทงจำหน่าย', 'แทงจำหน่าย', 'ใกล้ครบอายุ'], locations: [], departments: [], buildings: [], floors: [], assignees: [],
   material_categories: ['วัสดุสำนักงาน', 'วัสดุคอมพิวเตอร์', 'อุปกรณ์โสตทัศนูปกรณ์', 'วัสดุทำความสะอาด'],
   ink_types: ['หมึกอิงค์เจ็ท', 'หมึกเลเซอร์ (Toner)', 'ดรัม/ชุดสร้างภาพ', 'ตลับหมึก'], material_units: ['ชิ้น', 'กล่อง', 'ตลับ', 'ขวด', 'รีม', 'ม้วน', 'ชุด', 'เส้น']
 };
@@ -52,14 +52,26 @@ function saveDemoAssets() {
 function loadDemoSystemOptions() {
   try {
     const saved = JSON.parse(localStorage.getItem('bcn-ckr-system-options') || 'null');
-    if (Array.isArray(saved)) return saved;
+    if (Array.isArray(saved)) {
+      const present = new Set(saved.map(option => option.option_type));
+      return [...saved, ...Object.entries(defaultCatalogs).filter(([type]) => !present.has(type)).flatMap(([option_type, values]) => values.map((value, sort_order) => ({ id: `default-${option_type}-${sort_order}`, option_type, value, is_active: true, sort_order })))];
+    }
   } catch { /* use defaults */ }
   return Object.entries(defaultCatalogs).flatMap(([option_type, values]) => values.map((value, sort_order) => ({ id: `default-${option_type}-${sort_order}`, option_type, value, is_active: true, sort_order })));
 }
 function deriveCatalogs(options) {
   return Object.fromEntries(Object.keys(defaultCatalogs).map(type => [type, options.filter(option => option.option_type === type && option.is_active !== false).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map(option => option.value)]));
 }
-function applySystemOptions() { catalogs = deriveCatalogs(systemOptions); assetCategories = catalogs.asset_categories; }
+function applySystemOptions() {
+  catalogs = deriveCatalogs(systemOptions); assetCategories = catalogs.asset_categories;
+  if (typeof statusMetrics !== 'undefined') {
+    const templates = defaultStatusMetrics;
+    statusMetrics = catalogs.asset_statuses.map((name, index) => {
+      const template = templates.find(item => item.name === name || item.matches.includes(name));
+      return template ? { ...template, name, matches: [...new Set([name, ...template.matches])] } : { name, icon: 'circle-dot', tone: ['blue', 'mint', 'amber', 'violet'][index % 4], matches: [name] };
+    });
+  }
+}
 function saveDemoSystemOptions() { if (!supabase) localStorage.setItem('bcn-ckr-system-options', JSON.stringify(systemOptions)); }
 async function loadSystemOptions() {
   if (!supabase || !session?.user) { systemOptions = loadDemoSystemOptions(); applySystemOptions(); return; }
@@ -68,7 +80,7 @@ async function loadSystemOptions() {
   systemOptions = data || []; applySystemOptions();
 }
 const catalogGroups = [
-  ['asset_categories', 'ประเภทครุภัณฑ์', 'ใช้แบ่งหมวดในทะเบียนและสรุปภาพรวม'], ['locations', 'สถานที่ใช้งาน/จัดเก็บ', 'เช่น ห้องปฏิบัติการหรือห้องทำงาน'],
+  ['asset_categories', 'ประเภทครุภัณฑ์', 'ใช้แบ่งหมวดในทะเบียนและสรุปภาพรวม'], ['asset_statuses', 'สถานะครุภัณฑ์', 'ตัวเลือกสถานะที่ใช้ในทะเบียนและสรุปภาพรวม'], ['locations', 'สถานที่ใช้งาน/จัดเก็บ', 'เช่น ห้องปฏิบัติการหรือห้องทำงาน'],
   ['departments', 'หน่วยงาน', 'หน่วยงานเจ้าของหรือรับผิดชอบครุภัณฑ์'], ['buildings', 'อาคาร', 'ชื่ออาคารภายในวิทยาลัย'], ['floors', 'ชั้น', 'ชั้นหรือระดับของอาคาร'],
   ['assignees', 'ผู้รับผิดชอบ', 'รายชื่อผู้ดูแลครุภัณฑ์'], ['material_categories', 'ประเภทวัสดุ', 'หมวดหมู่สำหรับคลังวัสดุ'],
   ['ink_types', 'ประเภทของหมึก', 'เช่น หมึกอิงค์เจ็ท หมึกเลเซอร์ หรือดรัม'], ['material_units', 'หน่วยนับวัสดุ', 'เช่น ชิ้น กล่อง ตลับ หรือรีม']
@@ -95,12 +107,35 @@ async function toggleSystemOption(id, active) {
   if (supabase && session?.user) { const { error } = await supabase.from('system_options').update({ is_active: active }).eq('id', id); if (error) return toast(`บันทึกไม่ได้: ${error.message}`, true); }
   option.is_active = active; saveDemoSystemOptions(); applySystemOptions(); renderApp(); toast(active ? 'เปิดใช้รายการแล้ว' : 'ปิดใช้รายการแล้ว');
 }
+async function editSystemOption(id, rawValue) {
+  const option = systemOptions.find(item => String(item.id) === String(id));
+  const value = String(rawValue || '').trim().replace(/\s+/g, ' ');
+  if (!option || !canManageSettings()) return;
+  if (!value || value.length > 100) return toast('กรอกชื่อรายการไม่เกิน 100 ตัวอักษร', true);
+  if (systemOptions.some(item => item.id !== option.id && item.option_type === option.option_type && item.value.toLocaleLowerCase() === value.toLocaleLowerCase())) return toast('มีรายการชื่อนี้อยู่แล้ว', true);
+  if (supabase && session?.user) {
+    const { error } = await supabase.from('system_options').update({ value }).eq('id', id);
+    if (error) return toast(`แก้ไขรายการไม่ได้: ${error.message}`, true);
+  }
+  const previousValue = option.value;
+  if (option.option_type === 'asset_statuses') {
+    assets = assets.map(asset => asset.status === previousValue ? { ...asset, status: value } : asset);
+    saveDemoAssets();
+  }
+  option.value = value; saveDemoSystemOptions(); applySystemOptions(); renderApp(); toast('แก้ไขรายการตั้งค่าแล้ว');
+}
 async function renderSettings(content) {
   const canEdit = canManageSettings();
-  content.innerHTML = `<div class="page-heading"><div><span class="section-kicker">SYSTEM CONFIGURATION</span><h1>ตั้งค่าระบบ</h1><p>จัดการรายการที่ใช้เลือกในทะเบียนครุภัณฑ์และคลังวัสดุ</p></div><button class="button secondary" id="refresh-system-options">${icon('rotate-cw', 15)} รีเฟรช</button></div>${!canEdit ? '<div class="settings-readonly">สิทธิ์ผู้ดูข้อมูล · ติดต่อ Super Admin หากต้องการแก้ไขรายการ</div>' : ''}<section class="settings-grid">${catalogGroups.map(([type, title, description]) => `<article class="panel catalog-card"><div class="catalog-card-heading"><div><h3>${title}</h3><p>${description}</p></div><span class="catalog-count">${systemOptions.filter(option => option.option_type === type && option.is_active !== false).length} รายการ</span></div>${canEdit ? `<form class="catalog-add-form" data-option-type="${type}"><input name="value" maxlength="100" placeholder="เพิ่ม${title}" aria-label="เพิ่ม${title}" /><button type="submit" class="button primary">เพิ่ม</button></form>` : ''}<div class="catalog-option-list">${systemOptions.filter(option => option.option_type === type).map(option => `<div class="catalog-option ${option.is_active === false ? 'inactive' : ''}"><span>${escapeHtml(option.value)}</span>${canEdit ? `<button type="button" class="catalog-toggle" data-option-id="${escapeHtml(option.id)}" data-next-active="${option.is_active === false}" aria-label="${option.is_active === false ? 'เปิดใช้' : 'ปิดใช้'} ${escapeHtml(option.value)}">${option.is_active === false ? 'เปิดใช้' : 'ปิดใช้'}</button>` : ''}</div>`).join('') || '<span class="catalog-empty">ยังไม่มีรายการ · เพิ่มรายการด้านบน</span>'}</div></article>`).join('')}</section><p class="settings-footnote">การปิดใช้จะซ่อนรายการจากตัวเลือกใหม่ แต่ข้อมูลครุภัณฑ์และวัสดุเดิมยังคงอยู่</p>`;
+  content.innerHTML = `<div class="page-heading"><div><span class="section-kicker">SYSTEM CONFIGURATION</span><h1>ตั้งค่าระบบ</h1><p>จัดการรายการที่ใช้เลือกในทะเบียนครุภัณฑ์และคลังวัสดุ</p></div><button class="button secondary" id="refresh-system-options">${icon('rotate-cw', 15)} รีเฟรช</button></div>${!canEdit ? '<div class="settings-readonly">สิทธิ์ผู้ดูข้อมูล · ติดต่อ Super Admin หากต้องการแก้ไขรายการ</div>' : ''}<section class="settings-grid">${catalogGroups.map(([type, title, description]) => `<article class="panel catalog-card"><div class="catalog-card-heading"><div><h3>${title}</h3><p>${description}</p></div><span class="catalog-count">${systemOptions.filter(option => option.option_type === type && option.is_active !== false).length} รายการ</span></div>${canEdit ? `<form class="catalog-add-form" data-option-type="${type}"><input name="value" maxlength="100" placeholder="เพิ่ม${title}" aria-label="เพิ่ม${title}" /><button type="submit" class="button primary">เพิ่ม</button></form>` : ''}<div class="catalog-option-list">${systemOptions.filter(option => option.option_type === type).map(option => `<div class="catalog-option ${option.is_active === false ? 'inactive' : ''}" data-catalog-row="${escapeHtml(option.id)}"><span class="catalog-option-value">${escapeHtml(option.value)}</span>${canEdit ? `<div class="catalog-option-actions"><button type="button" class="catalog-edit" data-option-id="${escapeHtml(option.id)}">แก้ไข</button><button type="button" class="catalog-toggle" data-option-id="${escapeHtml(option.id)}" data-next-active="${option.is_active === false}" aria-label="${option.is_active === false ? 'เปิดใช้' : 'ปิดใช้'} ${escapeHtml(option.value)}">${option.is_active === false ? 'เปิดใช้' : 'ปิดใช้'}</button></div>` : ''}</div>`).join('') || '<span class="catalog-empty">ยังไม่มีรายการ · เพิ่มรายการด้านบน</span>'}</div></article>`).join('')}</section><p class="settings-footnote">การปิดใช้จะซ่อนรายการจากตัวเลือกใหม่ แต่ข้อมูลครุภัณฑ์และวัสดุเดิมยังคงอยู่</p>`;
   content.querySelector('#refresh-system-options').addEventListener('click', async () => { await loadSystemOptions(); renderApp(); toast('อัปเดตรายการตั้งค่าแล้ว'); });
   content.querySelectorAll('.catalog-add-form').forEach(form => form.addEventListener('submit', async event => { event.preventDefault(); await addSystemOption(form.dataset.optionType, new FormData(form).get('value')); }));
   content.querySelectorAll('.catalog-toggle').forEach(button => button.addEventListener('click', () => toggleSystemOption(button.dataset.optionId, button.dataset.nextActive === 'true')));
+  content.querySelectorAll('.catalog-edit').forEach(button => button.addEventListener('click', () => {
+    const option = systemOptions.find(item => String(item.id) === button.dataset.optionId), row = button.closest('.catalog-option'); if (!option || !row) return;
+    row.innerHTML = `<form class="catalog-edit-form"><input name="value" maxlength="100" value="${escapeHtml(option.value)}" aria-label="แก้ไข${escapeHtml(option.value)}" /><button type="submit" class="catalog-save">บันทึก</button><button type="button" class="catalog-cancel">ยกเลิก</button></form>`;
+    const form = row.querySelector('form'); form.elements.value.focus(); form.addEventListener('submit', event => { event.preventDefault(); editSystemOption(option.id, form.elements.value.value); });
+    row.querySelector('.catalog-cancel').addEventListener('click', () => renderApp());
+  }));
   renderIcons();
 }
 
@@ -148,7 +183,7 @@ function renderApp() {
 
 function statusClass(status) { return ['ใช้งานปกติ', 'กำลังใช้งาน', 'พร้อมใช้งาน', 'เครื่องสำรอง'].includes(status) ? 'good' : ['รอซ่อม', 'ส่งซ่อม', 'ซ่อมบำรุง', 'รอแทงจำหน่าย', 'รอจำหน่าย'].includes(status) ? 'warning' : ['ใกล้ครบอายุ'].includes(status) ? 'purple' : 'muted'; }
 function categoryIcon(category) { return ['คอมพิวเตอร์'].includes(category) ? 'monitor' : ['ไฟฟ้าและวิทยุ'].includes(category) ? 'plug-zap' : ['โฆษณาและเผยแพร่'].includes(category) ? 'presentation' : category === 'อุปกรณ์เครือข่าย' ? 'router' : category === 'ซอฟต์แวร์' ? 'app-window' : 'printer'; }
-const statusMetrics = [
+const defaultStatusMetrics = [
   { name: 'พร้อมใช้งาน', icon: 'badge-check', tone: 'mint', matches: ['พร้อมใช้งาน'] },
   { name: 'กำลังใช้งาน', icon: 'monitor-check', tone: 'blue', matches: ['กำลังใช้งาน', 'ใช้งานปกติ'] },
   { name: 'เครื่องสำรอง', icon: 'package-check', tone: 'violet', matches: ['เครื่องสำรอง'] },
@@ -156,6 +191,7 @@ const statusMetrics = [
   { name: 'รอแทงจำหน่าย', icon: 'clock-3', tone: 'orange', matches: ['รอแทงจำหน่าย', 'รอจำหน่าย'] },
   { name: 'แทงจำหน่าย', icon: 'archive', tone: 'slate', matches: ['แทงจำหน่าย', 'จำหน่ายแล้ว'] },
 ];
+let statusMetrics = defaultStatusMetrics;
 function statusCount(metric) { return assets.filter(asset => metric.matches.includes(asset.status)).length; }
 function categoryCount(name) { return assets.filter(asset => asset.category === name).length; }
 function datalistOptions(id, values) { return `<datalist id="${id}">${(values || []).map(value => `<option value="${escapeHtml(value)}"></option>`).join('')}</datalist>`; }
@@ -259,8 +295,14 @@ function thaiFiscalYear(dateValue) {
 function openAssetModal() {
   const modal = document.createElement('div'); modal.className = 'modal-backdrop';
   const fieldLabel = (_name, text) => '<label class="field-label">' + text + '</label>';
-  const categories = assetCategories.map(item => '<option>' + escapeHtml(item) + '</option>').join('');
-  const statuses = statusMetrics.map(item => '<option>' + escapeHtml(item.name) + '</option>').join('');
+  const selectOptions = (values, placeholder) => '<option value="">' + placeholder + '</option>' + (values || []).map(item => '<option value="' + escapeHtml(item) + '">' + escapeHtml(item) + '</option>').join('');
+  const categories = selectOptions(assetCategories, 'เลือกประเภทครุภัณฑ์');
+  const statuses = selectOptions(statusMetrics.map(item => item.name), 'เลือกสถานะ');
+  const locations = selectOptions(catalogs.locations, catalogs.locations.length ? 'เลือกสถานที่' : 'เพิ่มสถานที่ในตั้งค่าระบบ');
+  const departments = selectOptions(catalogs.departments, catalogs.departments.length ? 'เลือกหน่วยงาน' : 'เพิ่มหน่วยงานในตั้งค่าระบบ');
+  const floors = selectOptions(catalogs.floors, catalogs.floors.length ? 'เลือกชั้น' : 'เพิ่มชั้นในตั้งค่าระบบ');
+  const buildings = selectOptions(catalogs.buildings, catalogs.buildings.length ? 'เลือกอาคาร' : 'เพิ่มอาคารในตั้งค่าระบบ');
+  const assignees = selectOptions(catalogs.assignees, catalogs.assignees.length ? 'เลือกผู้รับผิดชอบ' : 'เพิ่มผู้รับผิดชอบในตั้งค่าระบบ');
   modal.innerHTML = '<section class="asset-modal"><div class="modal-head"><div><span class="section-kicker">ASSET REGISTRY</span><h2>เพิ่มครุภัณฑ์ใหม่</h2></div><button class="icon-button" id="close-modal" aria-label="ปิด">×</button></div>' +
     '<form id="asset-form"><div class="form-grid">' +
     '<div class="field">' + fieldLabel('barcode', 'เลขครุภัณฑ์', 'blue') + '<input name="asset_code" placeholder="เช่น 7440-001-001/1" /></div>' +
@@ -268,11 +310,11 @@ function openAssetModal() {
     '<div class="field">' + fieldLabel('tags', 'ประเภท', 'amber') + '<select name="category">' + categories + '</select></div>' +
     '<div class="field">' + fieldLabel('calendar-days', 'วันที่ได้รับ', 'blue') + '<input name="received_date" type="date" /></div>' +
     '<div class="field">' + fieldLabel('calendar-range', 'ปีงบประมาณ', 'violet') + '<input name="fiscal_year" type="number" min="2500" max="3000" placeholder="เช่น 2569" /></div>' +
-    '<div class="field">' + fieldLabel('map-pin', 'สถานที่', 'mint') + '<input name="location" list="asset-location-options" placeholder="เช่น ห้องปฏิบัติการ" />' + datalistOptions('asset-location-options', catalogs.locations) + '</div>' +
-    '<div class="field">' + fieldLabel('landmark', 'หน่วยงาน', 'teal') + '<input name="department" list="asset-department-options" placeholder="หน่วยงานที่รับผิดชอบ" />' + datalistOptions('asset-department-options', catalogs.departments) + '</div>' +
-    '<div class="field">' + fieldLabel('layers', 'ชั้น', 'blue') + '<input name="floor" list="asset-floor-options" placeholder="เช่น ชั้น 2" />' + datalistOptions('asset-floor-options', catalogs.floors) + '</div>' +
-    '<div class="field">' + fieldLabel('building', 'อาคาร', 'amber') + '<input name="building" list="asset-building-options" placeholder="เช่น อาคาร 1" />' + datalistOptions('asset-building-options', catalogs.buildings) + '</div>' +
-    '<div class="field">' + fieldLabel('user-round', 'ผู้รับผิดชอบ', 'violet') + '<input name="assignee" list="asset-assignee-options" placeholder="ชื่อผู้รับผิดชอบ" />' + datalistOptions('asset-assignee-options', catalogs.assignees) + '</div>' +
+    '<div class="field">' + fieldLabel('map-pin', 'สถานที่', 'mint') + '<select name="location">' + locations + '</select></div>' +
+    '<div class="field">' + fieldLabel('landmark', 'หน่วยงาน', 'teal') + '<select name="department">' + departments + '</select></div>' +
+    '<div class="field">' + fieldLabel('layers', 'ชั้น', 'blue') + '<select name="floor">' + floors + '</select></div>' +
+    '<div class="field">' + fieldLabel('building', 'อาคาร', 'amber') + '<select name="building">' + buildings + '</select></div>' +
+    '<div class="field">' + fieldLabel('user-round', 'ผู้รับผิดชอบ', 'violet') + '<select name="assignee">' + assignees + '</select></div>' +
     '<div class="field">' + fieldLabel('shield-check', 'สถานะ', 'mint') + '<select name="status">' + statuses + '</select></div>' +
     '<div class="field image-field">' + fieldLabel('image', 'ภาพอุปกรณ์ (สูงสุด 2 ภาพ)') + '<div class="image-actions"><button type="button" class="image-action image-action-camera" id="take-asset-photo">ถ่ายรูปใหม่</button><button type="button" class="image-action" id="choose-asset-image">เลือกจากเครื่อง</button></div><input id="asset-image" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden /><input id="asset-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden /><div id="asset-image-preview" class="asset-image-preview" tabindex="0"><span>วางรูปภาพด้วย Ctrl+V หรือเลือกรูป JPG, PNG, WebP ไม่เกิน 10 MB</span></div><small>เลือกรูปได้ 1–2 ภาพ · จัดเก็บแยกตามหมวดหมู่และเลขครุภัณฑ์</small></div>' +
     '</div><details class="optional-asset-details"><summary>ข้อมูลเพิ่มเติม</summary><div class="form-grid">' +

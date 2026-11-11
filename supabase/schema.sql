@@ -14,6 +14,7 @@ create table if not exists public.it_assets (
   department text,
   assignee text,
   status text not null default 'พร้อมใช้งาน',
+  status_option_type text not null default 'asset_statuses',
   received_date date,
   fiscal_year integer,
   purchase_date date,
@@ -35,7 +36,7 @@ alter table public.it_assets add column if not exists image_path text;
 alter table public.it_assets add column if not exists image_paths text[] not null default '{}';
 alter table public.it_assets alter column status drop default;
 alter table public.it_assets drop constraint if exists it_assets_status_check;
-alter table public.it_assets add constraint it_assets_status_check check (status in ('พร้อมใช้งาน','กำลังใช้งาน','เครื่องสำรอง','ซ่อมบำรุง','รอแทงจำหน่าย','แทงจำหน่าย','ใช้งานปกติ','รอซ่อม','ส่งซ่อม','ใกล้ครบอายุ','จำหน่ายแล้ว'));
+alter table public.it_assets add column if not exists status_option_type text not null default 'asset_statuses';
 alter table public.it_assets alter column status set default 'พร้อมใช้งาน';
 update public.it_assets set received_date = purchase_date where received_date is null and purchase_date is not null;
 update public.it_assets set image_paths = array[image_path] where image_path is not null and cardinality(image_paths) = 0;
@@ -97,7 +98,7 @@ for delete to authenticated using (bucket_id = 'it-asset-images' and public.has_
 -- Managed selectable values for asset registration and materials.
 create table if not exists public.system_options (
   id uuid primary key default gen_random_uuid(),
-  option_type text not null check (option_type in ('asset_categories','locations','departments','buildings','floors','assignees','material_categories','ink_types','material_units')),
+  option_type text not null check (option_type in ('asset_categories','asset_statuses','locations','departments','buildings','floors','assignees','material_categories','ink_types','material_units')),
   value text not null check (length(trim(value)) between 1 and 100),
   is_active boolean not null default true,
   sort_order integer not null default 0,
@@ -117,9 +118,25 @@ grant select, insert, update on public.system_options to authenticated;
 
 insert into public.system_options(option_type, value, sort_order) values
 ('asset_categories','คอมพิวเตอร์',0),('asset_categories','ไฟฟ้าและวิทยุ',1),('asset_categories','โฆษณาและเผยแพร่',2),('asset_categories','อื่น ๆ',3),
+('asset_statuses','พร้อมใช้งาน',0),('asset_statuses','กำลังใช้งาน',1),('asset_statuses','เครื่องสำรอง',2),('asset_statuses','ซ่อมบำรุง',3),('asset_statuses','รอแทงจำหน่าย',4),('asset_statuses','แทงจำหน่าย',5),('asset_statuses','ใกล้ครบอายุ',6),
 ('material_categories','วัสดุสำนักงาน',0),('material_categories','วัสดุคอมพิวเตอร์',1),('material_categories','อุปกรณ์โสตทัศนูปกรณ์',2),('material_categories','วัสดุทำความสะอาด',3),
 ('ink_types','หมึกอิงค์เจ็ท',0),('ink_types','หมึกเลเซอร์ (Toner)',1),('ink_types','ดรัม/ชุดสร้างภาพ',2),('ink_types','ตลับหมึก',3),
 ('material_units','ชิ้น',0),('material_units','กล่อง',1),('material_units','ตลับ',2),('material_units','ขวด',3),('material_units','รีม',4),('material_units','ม้วน',5),('material_units','ชุด',6),('material_units','เส้น',7)
 on conflict (option_type, value) do nothing;
 
 alter table public.inventory_materials add column if not exists ink_type text;
+
+alter table public.system_options drop constraint if exists system_options_option_type_check;
+alter table public.system_options add constraint system_options_option_type_check
+  check (option_type in ('asset_categories','asset_statuses','locations','departments','buildings','floors','assignees','material_categories','ink_types','material_units'));
+alter table public.it_assets drop constraint if exists it_assets_status_check;
+alter table public.it_assets alter column status drop default;
+update public.it_assets set status = case status
+  when 'ใช้งานปกติ' then 'กำลังใช้งาน' when 'รอซ่อม' then 'ซ่อมบำรุง' when 'ส่งซ่อม' then 'ซ่อมบำรุง'
+  when 'รอจำหน่าย' then 'รอแทงจำหน่าย' when 'จำหน่ายแล้ว' then 'แทงจำหน่าย' else status end;
+alter table public.it_assets alter column status set default 'พร้อมใช้งาน';
+alter table public.it_assets drop constraint if exists it_assets_status_option_fk;
+alter table public.it_assets add constraint it_assets_status_option_fk
+  foreign key (status_option_type, status)
+  references public.system_options(option_type, value)
+  on update cascade on delete restrict;
