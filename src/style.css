@@ -245,3 +245,31 @@ table{white-space:nowrap}thead{background:#f4f9fa}th{height:42px;color:#597987;f
 .asset-panel .table-toolbar{background:#f7faff}.app-footer{color:#647895}
 @media(max-width:760px){.sidebar{background:linear-gradient(180deg,#10377f,#08245f)}.dashboard-premium-category .metric-card{min-height:112px}}
 .sidebar-collapsed .sidebar{background:linear-gradient(180deg,#10377f 0%,#0d2d70 58%,#08245f 100%);border-right-color:#0b2865}.sidebar-collapsed .nav-item.active{background:linear-gradient(100deg,#2f7cf0,#2370e5)}
+
+/* Calm motion language for navigation, data cards, charts, and dialogs. */
+@keyframes ckr-enter-up{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes ckr-dialog-in{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes ckr-chart-grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes ckr-chart-rise{from{transform:scaleY(.12)}to{transform:scaleY(1)}}
+.page-heading{animation:ckr-enter-up .38s cubic-bezier(.2,.75,.25,1) both}
+.welcome-banner{animation:ckr-dialog-in .48s cubic-bezier(.2,.75,.25,1) both}
+.metric-grid .metric-card{animation:ckr-enter-up .42s cubic-bezier(.2,.75,.25,1) both}
+.metric-grid .metric-card:nth-child(2){animation-delay:.035s}.metric-grid .metric-card:nth-child(3){animation-delay:.07s}.metric-grid .metric-card:nth-child(4){animation-delay:.105s}.metric-grid .metric-card:nth-child(5){animation-delay:.14s}.metric-grid .metric-card:nth-child(6){animation-delay:.175s}
+.analytics-grid .chart-panel,.settings-grid .catalog-card{animation:ckr-enter-up .45s cubic-bezier(.2,.75,.25,1) both}
+.analytics-grid .chart-panel:nth-child(2),.settings-grid .catalog-card:nth-child(2){animation-delay:.055s}.analytics-grid .chart-panel:nth-child(3),.settings-grid .catalog-card:nth-child(3){animation-delay:.11s}.analytics-grid .chart-panel:nth-child(4),.settings-grid .catalog-card:nth-child(4){animation-delay:.165s}
+.metric-card,.chart-panel,.catalog-card,.asset-panel{transition:transform .22s cubic-bezier(.2,.75,.25,1),box-shadow .22s,border-color .22s}
+.metric-card:hover,.chart-panel:hover,.catalog-card:hover,.asset-panel:hover{transform:translateY(-3px);box-shadow:0 14px 30px rgba(17,49,107,.12)}
+.nav-item svg,.nav-subitem .nav-subicon,.button svg,.icon-button svg{transition:transform .2s cubic-bezier(.2,.75,.25,1)}
+.nav-item:hover svg,.nav-subitem:hover .nav-subicon{transform:translateY(-1px) scale(1.08)}
+.button:not(:disabled),.icon-button,.view-all,.nav-tree-toggle{transition:transform .18s,box-shadow .18s,background-color .18s,color .18s}
+.button:not(:disabled):hover,.icon-button:hover{transform:translateY(-2px);box-shadow:0 7px 16px rgba(17,49,107,.14)}
+.button:not(:disabled):active,.icon-button:active{transform:translateY(0) scale(.98)}
+.modal-backdrop{animation:ckr-backdrop-in .2s ease both}
+@keyframes ckr-backdrop-in{from{opacity:0}to{opacity:1}}
+.modal-backdrop>.asset-modal,.modal-backdrop>.materials-modal,.modal-backdrop>.transaction-modal{animation:ckr-dialog-in .24s cubic-bezier(.2,.75,.25,1) both;transform-origin:center}
+.chart-bar-track i{transform-origin:left center;animation:ckr-chart-grow .65s cubic-bezier(.2,.75,.25,1) both}
+.fiscal-track i{transform-origin:center bottom;animation:ckr-chart-rise .58s cubic-bezier(.2,.75,.25,1) both}
+.department-assignee-group[open]>.catalog-option-list,.department-assignee-group[open]>.department-assignee-form{animation:ckr-enter-up .2s ease both}
+.catalog-option,.asset-panel tbody tr{transition:background-color .18s,transform .18s,box-shadow .18s}
+.catalog-option:hover{transform:translateX(2px);box-shadow:0 4px 12px rgba(17,49,107,.06)}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
