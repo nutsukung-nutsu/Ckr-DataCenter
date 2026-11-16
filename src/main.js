@@ -99,14 +99,16 @@ const catalogGroups = [
 function canManageSettings() { return !supabase || userRole === 'super_admin'; }
 function canImportAssignees() { return !supabase || ['super_admin', 'asset_manager'].includes(userRole); }
 function canImportCatalog(type) { return type === 'assignees' ? canImportAssignees() : canManageSettings(); }
-async function addSystemOption(type, rawValue, departmentId = null, assigneeType = '') {
+async function addSystemOption(type, rawValue, departmentId = null, assigneeType = '', { keepCurrentView = false } = {}) {
   const value = String(rawValue || '').trim().replace(/\s+/g, ' ');
   if (!canManageSettings()) return toast('เฉพาะ Super Admin แก้ไขรายการตั้งค่าได้', true);
   if (!value || value.length > 100) return toast('กรอกชื่อรายการไม่เกิน 100 ตัวอักษร', true);
   if (!await refreshSystemOptionType(type)) return;
   const existing = systemOptions.find(option => option.option_type === type && option.value.toLocaleLowerCase() === value.toLocaleLowerCase());
   if (existing?.is_active !== false) {
-    renderApp(); return toast('มีรายการนี้อยู่แล้ว · รายการปัจจุบันแสดงอยู่ในหน้านี้', true);
+    if (!keepCurrentView) renderApp();
+    toast('มีรายการนี้อยู่แล้ว · รายการปัจจุบันแสดงอยู่ในหน้านี้', true);
+    return existing;
   }
   if (existing) {
     if (supabase && session?.user) { const { error } = await supabase.from('system_options').update({ is_active: true }).eq('id', existing.id); if (error) return toast(`เปิดใช้รายการไม่ได้: ${error.message}`, true); }
@@ -116,14 +118,15 @@ async function addSystemOption(type, rawValue, departmentId = null, assigneeType
     if (supabase && session?.user) {
       const { data, error } = await supabase.from('system_options').upsert({ ...record, created_by: session.user.id }, { onConflict: 'option_type,value' }).select().single();
       if (error) {
-        if (error.code === '23505') { await loadSystemOptions(); renderApp(); return toast('มีรายการนี้อยู่แล้ว · อัปเดตรายการจากฐานข้อมูลแล้ว', true); }
+        if (error.code === '23505') { await loadSystemOptions(); if (!keepCurrentView) renderApp(); toast('มีรายการนี้อยู่แล้ว · อัปเดตรายการจากฐานข้อมูลแล้ว', true); return systemOptions.find(option => option.option_type === type && option.value.toLocaleLowerCase() === value.toLocaleLowerCase()); }
         return toast(`เพิ่มรายการไม่ได้: ${error.message}`, true);
       }
       systemOptions.push(data);
     }
     else systemOptions.push({ ...record, id: `local-${type}-${Date.now()}` });
   }
-  saveDemoSystemOptions(); applySystemOptions(); renderApp(); toast('เพิ่มรายการตั้งค่าแล้ว');
+  saveDemoSystemOptions(); applySystemOptions(); if (!keepCurrentView) renderApp(); toast('เพิ่มรายการตั้งค่าแล้ว');
+  return systemOptions.find(option => option.option_type === type && option.value.toLocaleLowerCase() === value.toLocaleLowerCase());
 }
 const catalogCsvTypes = new Set(['locations', 'departments', 'buildings', 'floors', 'assignees']);
 const serviceHealth = { cloudflare: null, github: null, supabase: null, checkedAt: null };
@@ -517,7 +520,8 @@ function openAssetModal() {
   const floors = selectOptions(catalogs.floors, catalogs.floors.length ? 'เลือกชั้น' : 'เพิ่มชั้นในตั้งค่าระบบ');
   const buildings = selectOptions(catalogs.buildings, catalogs.buildings.length ? 'เลือกอาคาร' : 'เพิ่มอาคารในตั้งค่าระบบ');
   const assignees = selectOptions([], 'เลือกหน่วยงานก่อน');
-  const searchableSelect = (name, options, placeholder, disabled = false) => '<div class="searchable-select" data-searchable-select="' + name + '"><select name="' + name + '"' + (disabled ? ' disabled' : '') + '>' + options + '</select><button type="button" class="searchable-select-trigger" aria-haspopup="listbox" aria-expanded="false"' + (disabled ? ' disabled' : '') + '><span>' + placeholder + '</span><span aria-hidden="true">⌄</span></button><div class="searchable-select-menu" hidden><input type="search" class="searchable-select-search" placeholder="ค้นหา..." aria-label="ค้นหา' + placeholder + '" autocomplete="off"><div class="searchable-select-options" role="listbox"></div></div></div>';
+  const optionTypeByField = { category: 'asset_categories', status: 'asset_statuses', location: 'locations', department: 'departments', floor: 'floors', building: 'buildings' };
+  const searchableSelect = (name, options, placeholder, disabled = false) => '<div class="searchable-select" data-searchable-select="' + name + '" data-option-type="' + (optionTypeByField[name] || '') + '"><select name="' + name + '"' + (disabled ? ' disabled' : '') + '>' + options + '</select><button type="button" class="searchable-select-trigger" aria-haspopup="listbox" aria-expanded="false"' + (disabled ? ' disabled' : '') + '><span>' + placeholder + '</span><span aria-hidden="true">⌄</span></button><div class="searchable-select-menu" hidden><input type="search" class="searchable-select-search" placeholder="ค้นหา..." aria-label="ค้นหา' + placeholder + '" autocomplete="off"><div class="searchable-select-options" role="listbox"></div></div></div>';
   modal.innerHTML = '<section class="asset-modal"><div class="modal-head"><div><span class="section-kicker">ASSET REGISTRY</span><h2>เพิ่มครุภัณฑ์ใหม่</h2></div><button class="icon-button" id="close-modal" aria-label="ปิด">×</button></div>' +
     '<form id="asset-form"><div class="form-grid">' +
     '<div class="field">' + fieldLabel('barcode', 'เลขครุภัณฑ์', 'blue') + '<input name="asset_code" placeholder="เช่น 7440-001-001/1" /></div>' +
@@ -538,23 +542,47 @@ function openAssetModal() {
     '</div></details><div class="modal-actions"><button type="button" class="button secondary" id="cancel-modal">ยกเลิก</button><button type="submit" class="button primary" id="save-asset">บันทึกครุภัณฑ์</button></div></form></section>';
   document.body.append(modal); renderIcons();
   const form = modal.querySelector('#asset-form'), imageInput = modal.querySelector('#asset-image'), cameraInput = modal.querySelector('#asset-camera');
-  const refreshSearchableSelect = wrapper => {
+  const drawSearchResults = wrapper => {
     const select = wrapper.querySelector('select'), trigger = wrapper.querySelector('.searchable-select-trigger'), menu = wrapper.querySelector('.searchable-select-menu'), search = wrapper.querySelector('.searchable-select-search'), optionsBox = wrapper.querySelector('.searchable-select-options');
+    const queryText = search.value.trim(), query = queryText.toLocaleLowerCase();
+    const options = Array.from(select.options).slice(1).filter(option => option.textContent.toLocaleLowerCase().includes(query));
+    const optionType = wrapper.dataset.optionType;
+    const addButton = queryText && optionType && canManageSettings() && !options.length ? '<button type="button" class="searchable-select-add" data-add-search-option>เพิ่ม “' + escapeHtml(queryText) + '” ลงระบบ</button>' : '';
+    optionsBox.innerHTML = (options.map(option => '<button type="button" role="option" aria-selected="' + (option.value === select.value) + '" data-value="' + escapeHtml(option.value) + '">' + escapeHtml(option.textContent) + '</button>').join('') || '<span class="searchable-select-empty">ไม่พบรายการ</span>') + addButton;
+  };
+  const refreshSearchableSelect = (wrapper, resetSearch = true) => {
+    const select = wrapper.querySelector('select'), trigger = wrapper.querySelector('.searchable-select-trigger'), search = wrapper.querySelector('.searchable-select-search');
     const selected = select.selectedOptions[0];
     trigger.disabled = select.disabled;
     trigger.querySelector('span').textContent = selected?.value ? selected.textContent : (select.options[0]?.textContent || 'เลือก');
-    search.value = '';
-    const query = search.value.trim().toLocaleLowerCase();
-    const options = Array.from(select.options).slice(1).filter(option => option.textContent.toLocaleLowerCase().includes(query));
-    optionsBox.innerHTML = options.map(option => '<button type="button" role="option" aria-selected="' + (option.value === select.value) + '" data-value="' + escapeHtml(option.value) + '">' + escapeHtml(option.textContent) + '</button>').join('') || '<span class="searchable-select-empty">ไม่พบรายการ</span>';
+    if (resetSearch) search.value = '';
+    drawSearchResults(wrapper);
   };
   const refreshAllSearchableSelects = () => modal.querySelectorAll('.searchable-select').forEach(refreshSearchableSelect);
   modal.querySelectorAll('.searchable-select').forEach(wrapper => {
     const select = wrapper.querySelector('select'), trigger = wrapper.querySelector('.searchable-select-trigger'), menu = wrapper.querySelector('.searchable-select-menu'), search = wrapper.querySelector('.searchable-select-search'), optionsBox = wrapper.querySelector('.searchable-select-options');
     refreshSearchableSelect(wrapper);
     trigger.addEventListener('click', () => { modal.querySelectorAll('.searchable-select-menu').forEach(other => { if (other !== menu) { other.hidden = true; other.parentElement.querySelector('.searchable-select-trigger').setAttribute('aria-expanded', 'false'); } }); menu.hidden = !menu.hidden; trigger.setAttribute('aria-expanded', String(!menu.hidden)); if (!menu.hidden) { refreshSearchableSelect(wrapper); search.focus(); } });
-    search.addEventListener('input', () => { const query = search.value.trim().toLocaleLowerCase(); const options = Array.from(select.options).slice(1).filter(option => option.textContent.toLocaleLowerCase().includes(query)); optionsBox.innerHTML = options.map(option => '<button type="button" role="option" aria-selected="' + (option.value === select.value) + '" data-value="' + escapeHtml(option.value) + '">' + escapeHtml(option.textContent) + '</button>').join('') || '<span class="searchable-select-empty">ไม่พบรายการ</span>'; });
-    optionsBox.addEventListener('click', event => { const optionButton = event.target.closest('[data-value]'); if (!optionButton) return; select.value = optionButton.dataset.value; select.dispatchEvent(new Event('change', { bubbles: true })); refreshSearchableSelect(wrapper); menu.hidden = true; trigger.setAttribute('aria-expanded', 'false'); trigger.focus(); });
+    search.addEventListener('input', () => drawSearchResults(wrapper));
+    optionsBox.addEventListener('click', async event => {
+      const addButton = event.target.closest('[data-add-search-option]');
+      if (addButton) {
+        const optionType = wrapper.dataset.optionType, query = search.value.trim();
+        if (!query || !optionType) return;
+        addButton.disabled = true;
+        const saved = await addSystemOption(optionType, query, null, '', { keepCurrentView: true });
+        if (!saved) { addButton.disabled = false; return; }
+        const placeholder = select.options[0]?.textContent || 'เลือก';
+        const values = optionType === 'asset_categories' ? assetCategories : optionType === 'asset_statuses' ? catalogs.asset_statuses : catalogs[optionType];
+        select.innerHTML = selectOptions(values || [], placeholder);
+        select.value = optionType === 'asset_categories' ? normalizeAssetCategory(saved.value) : saved.value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        refreshSearchableSelect(wrapper);
+        menu.hidden = true; trigger.setAttribute('aria-expanded', 'false'); trigger.focus();
+        return;
+      }
+      const optionButton = event.target.closest('[data-value]'); if (!optionButton) return; select.value = optionButton.dataset.value; select.dispatchEvent(new Event('change', { bubbles: true })); refreshSearchableSelect(wrapper); menu.hidden = true; trigger.setAttribute('aria-expanded', 'false'); trigger.focus();
+    });
     select.addEventListener('change', () => refreshSearchableSelect(wrapper));
   });
   modal.addEventListener('click', event => { if (!event.target.closest('.searchable-select')) modal.querySelectorAll('.searchable-select-menu').forEach(menu => { menu.hidden = true; menu.parentElement.querySelector('.searchable-select-trigger').setAttribute('aria-expanded', 'false'); }); });
