@@ -290,6 +290,13 @@ table{white-space:nowrap}thead{background:#f4f9fa}th{height:42px;color:#597987;f
 .materials-stats .material-stat>span,.materials-stats .material-stat>strong,.materials-stats .material-stat>strong small,.materials-stats .material-stat>em{color:#fff}
 .materials-stats .material-stat>em{opacity:.8}
 .materials-stats .material-stat:hover{transform:translateY(-3px);box-shadow:0 15px 28px rgba(17,49,107,.2)}
+.materials-stats .material-stat.total{background:linear-gradient(135deg,#3888f2,#1762d3)!important}
+.materials-stats .material-stat.units{background:linear-gradient(135deg,#32bd88,#14966d)!important}
+.materials-stats .material-stat.warning{background:linear-gradient(135deg,#9a69eb,#7041cf)!important}
+.materials-stats .material-stat.danger{background:linear-gradient(135deg,#ff9b4a,#e86948)!important}
+.materials-table-panel .asset-panel-head h3{color:#fff!important}.materials-table-panel .asset-panel-head p{color:#d3e2ff!important}
+@keyframes ckr-card-rise{from{transform:translateY(9px)}to{transform:translateY(0)}}
+.metric-grid .metric-card,.materials-stats .material-stat{animation-name:ckr-card-rise}
 .metric-grid.category-metrics:not(.dashboard-premium-category) .metric-card:nth-child(1):before{background:linear-gradient(90deg,#3888f2,#1762d3)}
 .metric-grid.category-metrics:not(.dashboard-premium-category) .metric-card:nth-child(2):before{background:linear-gradient(90deg,#32bd88,#14966d)}
 .metric-grid.category-metrics:not(.dashboard-premium-category) .metric-card:nth-child(3):before{background:linear-gradient(90deg,#9a69eb,#7041cf)}
