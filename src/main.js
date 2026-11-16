@@ -105,9 +105,8 @@ async function addSystemOption(type, rawValue, departmentId = null, assigneeType
   if (!value || value.length > 100) return toast('กรอกชื่อรายการไม่เกิน 100 ตัวอักษร', true);
   if (!await refreshSystemOptionType(type)) return;
   const existing = systemOptions.find(option => option.option_type === type && option.value.toLocaleLowerCase() === value.toLocaleLowerCase());
-  if (existing?.is_active !== false) {
-    if (!keepCurrentView) renderApp();
-    toast('มีรายการนี้อยู่แล้ว · รายการปัจจุบันแสดงอยู่ในหน้านี้', true);
+  if (existing && existing.is_active !== false) {
+    if (!keepCurrentView) { renderApp(); toast('มีรายการนี้อยู่แล้ว · รายการปัจจุบันแสดงอยู่ในหน้านี้', true); }
     return existing;
   }
   if (existing) {
@@ -574,8 +573,9 @@ function openAssetModal() {
         if (!saved) { addButton.disabled = false; return; }
         const placeholder = select.options[0]?.textContent || 'เลือก';
         const values = optionType === 'asset_categories' ? assetCategories : optionType === 'asset_statuses' ? catalogs.asset_statuses : catalogs[optionType];
-        select.innerHTML = selectOptions(values || [], placeholder);
-        select.value = optionType === 'asset_categories' ? normalizeAssetCategory(saved.value) : saved.value;
+        const selectedValue = optionType === 'asset_categories' ? normalizeAssetCategory(saved.value) : saved.value;
+        select.innerHTML = selectOptions([...new Set([...(values || []), selectedValue])], placeholder);
+        select.value = selectedValue;
         select.dispatchEvent(new Event('change', { bubbles: true }));
         refreshSearchableSelect(wrapper);
         menu.hidden = true; trigger.setAttribute('aria-expanded', 'false'); trigger.focus();
