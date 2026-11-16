@@ -273,3 +273,27 @@ table{white-space:nowrap}thead{background:#f4f9fa}th{height:42px;color:#597987;f
 .catalog-option,.asset-panel tbody tr{transition:background-color .18s,transform .18s,box-shadow .18s}
 .catalog-option:hover{transform:translateX(2px);box-shadow:0 4px 12px rgba(17,49,107,.06)}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* Shared navy chart headers and color-coded stat cards across the whole workspace. */
+.panel-heading{min-height:44px;margin:0 0 12px;padding:10px 14px;border-radius:10px;background:linear-gradient(105deg,#102f72,#1b4a9b);color:#fff}
+.panel-heading h3,.panel-heading h3 strong{margin:0;color:#fff}.panel-heading p{margin:2px 0 0;color:#d3e2ff;font-size:11px}.panel-heading .chart-kicker{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.2);color:#e8f2ff}
+.chart-panel .panel-heading{border-radius:15px 15px 0 0;margin:0}
+.stock-alert-panel .panel-heading,.movement-panel .panel-heading{margin-bottom:12px}
+.stock-alert-panel .panel-heading h3,.movement-panel .panel-heading h3{color:#fff}.stock-alert-panel .panel-heading p,.movement-panel .panel-heading p{color:#d3e2ff}
+.materials-stats .material-stat{isolation:isolate;border:0;box-shadow:0 10px 24px rgba(17,49,107,.13);transition:transform .22s,box-shadow .22s}
+.materials-stats .material-stat:before{display:none}
+.materials-stats .material-stat.total{background:linear-gradient(135deg,#3888f2,#1762d3)}
+.materials-stats .material-stat.units{background:linear-gradient(135deg,#32bd88,#14966d)}
+.materials-stats .material-stat.warning{background:linear-gradient(135deg,#9a69eb,#7041cf)}
+.materials-stats .material-stat.danger{background:linear-gradient(135deg,#ff9b4a,#e86948)}
+.materials-stats .material-stat>svg{background:rgba(255,255,255,.18);color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.22)}
+.materials-stats .material-stat>span,.materials-stats .material-stat>strong,.materials-stats .material-stat>strong small,.materials-stats .material-stat>em{color:#fff}
+.materials-stats .material-stat>em{opacity:.8}
+.materials-stats .material-stat:hover{transform:translateY(-3px);box-shadow:0 15px 28px rgba(17,49,107,.2)}
+.metric-grid.category-metrics:not(.dashboard-premium-category) .metric-card:nth-child(1):before{background:linear-gradient(90deg,#3888f2,#1762d3)}
+.metric-grid.category-metrics:not(.dashboard-premium-category) .metric-card:nth-child(2):before{background:linear-gradient(90deg,#32bd88,#14966d)}
+.metric-grid.category-metrics:not(.dashboard-premium-category) .metric-card:nth-child(3):before{background:linear-gradient(90deg,#9a69eb,#7041cf)}
+.metric-grid.category-metrics:not(.dashboard-premium-category) .metric-card:nth-child(4):before{background:linear-gradient(90deg,#ffad43,#f17c21)}
+.metric-grid.status-metrics:not(.dashboard-premium-status) .metric-card{border-top:3px solid #dbe7f5}
+.metric-grid.status-metrics:not(.dashboard-premium-status) .metric-card:nth-child(1){border-top-color:#22b47c}.metric-grid.status-metrics:not(.dashboard-premium-status) .metric-card:nth-child(2){border-top-color:#2594de}.metric-grid.status-metrics:not(.dashboard-premium-status) .metric-card:nth-child(3){border-top-color:#8b67df}.metric-grid.status-metrics:not(.dashboard-premium-status) .metric-card:nth-child(4){border-top-color:#f0a536}.metric-grid.status-metrics:not(.dashboard-premium-status) .metric-card:nth-child(5){border-top-color:#ed8150}.metric-grid.status-metrics:not(.dashboard-premium-status) .metric-card:nth-child(6){border-top-color:#8296a7}
+@media(max-width:760px){.panel-heading{padding:9px 11px}.materials-stats .material-stat{min-height:100px}}
