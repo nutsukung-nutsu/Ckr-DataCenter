@@ -305,3 +305,26 @@ table{white-space:nowrap}thead{background:#f4f9fa}th{height:42px;color:#597987;f
 .metric-grid.status-metrics:not(.dashboard-premium-status) .metric-card:nth-child(1){border-top-color:#22b47c}.metric-grid.status-metrics:not(.dashboard-premium-status) .metric-card:nth-child(2){border-top-color:#2594de}.metric-grid.status-metrics:not(.dashboard-premium-status) .metric-card:nth-child(3){border-top-color:#8b67df}.metric-grid.status-metrics:not(.dashboard-premium-status) .metric-card:nth-child(4){border-top-color:#f0a536}.metric-grid.status-metrics:not(.dashboard-premium-status) .metric-card:nth-child(5){border-top-color:#ed8150}.metric-grid.status-metrics:not(.dashboard-premium-status) .metric-card:nth-child(6){border-top-color:#8296a7}
 .sidebar{overflow-x:hidden;overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(196,218,255,.34) transparent}
 @media(max-width:760px){.panel-heading{padding:9px 11px}.materials-stats .material-stat{min-height:100px}}
+
+/* Dashboard charts: clear title bars and balanced plot spacing */
+.premium-dashboard-charts .chart-panel{min-height:300px;padding:0;border-radius:18px;overflow:hidden;background:linear-gradient(155deg,#fff 0%,#fbfefe 62%,#f1f9f8 100%)}
+.premium-dashboard-charts .chart-panel .panel-heading{display:flex;align-items:center;min-height:56px;padding:14px 18px;margin:0;border-radius:17px 17px 0 0;background:linear-gradient(108deg,#123777 0%,#1d4b98 100%);box-shadow:inset 0 2px 0 rgba(48,206,174,.85)}
+.premium-dashboard-charts .chart-panel .panel-heading>div{display:flex;align-items:center;min-width:0;width:100%}
+.premium-dashboard-charts .chart-panel .panel-heading h3{margin:0;color:#fff;font-size:16px;line-height:1.35;font-weight:700;letter-spacing:0}
+.premium-dashboard-charts .chart-panel .panel-heading p,.premium-dashboard-charts .chart-panel .chart-kicker{display:none}
+.premium-dashboard-charts .chart-panel .pie-layout,.premium-dashboard-charts .chart-panel .horizontal-bars,.premium-dashboard-charts .chart-panel .fiscal-chart{margin:20px 22px 22px}
+.premium-dashboard-charts .chart-panel .pie-layout{min-height:205px;gap:clamp(18px,3vw,34px)}
+.premium-dashboard-charts .chart-panel .pie-chart{width:160px;height:160px;flex-basis:160px}
+.premium-dashboard-charts .chart-panel .pie-legend{gap:10px}
+.premium-dashboard-charts .chart-panel .pie-legend-row{padding:7px 9px;border:1px solid transparent;border-radius:10px}
+.premium-dashboard-charts .chart-panel .pie-legend-row:hover{border-color:#deefed;background:#f1f9f8}
+.premium-dashboard-charts .chart-panel .horizontal-bars{gap:15px}
+.premium-dashboard-charts .chart-panel .chart-bar-label{margin-bottom:7px;font-size:13px}
+.premium-dashboard-charts .chart-panel .chart-bar-track{height:11px;border-radius:8px}
+.premium-dashboard-charts .chart-panel .fiscal-chart{height:218px;gap:14px;padding:12px 10px 0}
+.premium-dashboard-charts .chart-panel .fiscal-column{gap:8px}
+.premium-dashboard-charts .chart-panel .fiscal-track{width:38px;border-radius:11px 11px 5px 5px;background:linear-gradient(180deg,#f2f7fa,#eaf2f4)}
+.premium-dashboard-charts .chart-panel .fiscal-track i{border-radius:9px 9px 4px 4px;box-shadow:0 5px 12px rgba(21,150,178,.16)}
+.premium-dashboard-charts .chart-panel .fiscal-label{font-size:12px;font-weight:600;color:#668392}
+.premium-dashboard-charts .chart-panel .chart-empty{min-height:150px;display:grid;place-items:center;color:#849aa5;text-align:center}
+@media(max-width:700px){.premium-dashboard-charts .chart-panel .pie-layout,.premium-dashboard-charts .chart-panel .horizontal-bars,.premium-dashboard-charts .chart-panel .fiscal-chart{margin:16px}.premium-dashboard-charts .chart-panel .pie-layout{gap:12px}.premium-dashboard-charts .chart-panel .pie-chart{width:126px;height:126px;flex-basis:126px}.premium-dashboard-charts .chart-panel .pie-legend-row{padding:5px 4px}.premium-dashboard-charts .chart-panel .panel-heading{min-height:52px;padding:12px 15px}}
