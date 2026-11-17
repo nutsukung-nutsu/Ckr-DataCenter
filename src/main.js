@@ -91,7 +91,7 @@ async function loadSystemOptions() {
   systemOptions = data || []; applySystemOptions();
 }
 const catalogGroups = [
-  ['asset_categories', 'ประเภทครุภัณฑ์', 'ใช้แบ่งหมวดในทะเบียนและสรุปภาพรวม'], ['asset_statuses', 'สถานะครุภัณฑ์', 'ตัวเลือกสถานะที่ใช้ในทะเบียนและสรุปภาพรวม'], ['locations', 'สถานที่ใช้งาน/จัดเก็บ', 'เช่น ห้องปฏิบัติการหรือห้องทำงาน'],
+  ['asset_categories', 'หมวดหมู่ครุภัณฑ์', 'ใช้แบ่งหมวดในทะเบียนและสรุปภาพรวม'], ['asset_statuses', 'สถานะครุภัณฑ์', 'ตัวเลือกสถานะที่ใช้ในทะเบียนและสรุปภาพรวม'], ['locations', 'สถานที่ใช้งาน/จัดเก็บ', 'เช่น ห้องปฏิบัติการหรือห้องทำงาน'],
   ['departments', 'หน่วยงาน', 'หน่วยงานเจ้าของหรือรับผิดชอบครุภัณฑ์'], ['buildings', 'อาคาร', 'ชื่ออาคารภายในวิทยาลัย'], ['floors', 'ชั้น', 'ชั้นหรือระดับของอาคาร'],
   ['assignees', 'ผู้รับผิดชอบ', 'รายชื่อผู้ดูแลครุภัณฑ์'], ['material_categories', 'ประเภทวัสดุ', 'หมวดหมู่สำหรับคลังวัสดุ'],
   ['ink_types', 'ประเภทของหมึก', 'เช่น หมึกอิงค์เจ็ท หมึกเลเซอร์ หรือดรัม'], ['material_units', 'หน่วยนับวัสดุ', 'เช่น ชิ้น กล่อง ตลับ หรือรีม']
@@ -309,7 +309,7 @@ async function renderSettings(content) {
   const canEdit = canManageSettings();
 
   const tabGroups = {
-    assets: { label: 'ครุภัณฑ์', icon: 'boxes', description: 'ประเภทและสถานะที่ใช้ในทะเบียนครุภัณฑ์', types: ['asset_categories', 'asset_statuses'] },
+    assets: { label: 'ครุภัณฑ์', icon: 'boxes', description: 'หมวดหมู่และสถานะที่ใช้ในทะเบียนครุภัณฑ์', types: ['asset_categories', 'asset_statuses'] },
     places: { label: 'สถานที่และหน่วยงาน', icon: 'map-pin', description: 'กำหนดผู้รับผิดชอบภายในหน่วยงาน พร้อมสถานที่ อาคาร และชั้น', types: ['departments', 'locations', 'buildings', 'floors'] },
     materials: { label: 'คลังวัสดุ', icon: 'warehouse', description: 'หมวดวัสดุ ประเภทหมึก และหน่วยนับ', types: ['material_categories', 'ink_types', 'material_units'] }
   };
@@ -512,7 +512,7 @@ function openAssetModal() {
   const modal = document.createElement('div'); modal.className = 'modal-backdrop';
   const fieldLabel = (_name, text) => '<label class="field-label">' + text + '</label>';
   const selectOptions = (values, placeholder) => '<option value="">' + placeholder + '</option>' + (values || []).map(item => '<option value="' + escapeHtml(item) + '">' + escapeHtml(item) + '</option>').join('');
-  const categories = selectOptions(assetCategories, 'เลือกประเภทครุภัณฑ์');
+  const categories = selectOptions(assetCategories, 'เลือกหมวดหมู่ครุภัณฑ์');
   const statuses = selectOptions(statusMetrics.map(item => item.name), 'เลือกสถานะ');
   const locations = selectOptions(catalogs.locations, catalogs.locations.length ? 'เลือกสถานที่' : 'เพิ่มสถานที่ในตั้งค่าระบบ');
   const departments = selectOptions(catalogs.departments, catalogs.departments.length ? 'เลือกหน่วยงาน' : 'เพิ่มหน่วยงานในตั้งค่าระบบ');
@@ -525,7 +525,7 @@ function openAssetModal() {
     '<form id="asset-form"><div class="form-grid">' +
     '<div class="field">' + fieldLabel('barcode', 'เลขครุภัณฑ์', 'blue') + '<input name="asset_code" placeholder="เช่น 7440-001-001/1" /></div>' +
     '<div class="field">' + fieldLabel('package', 'ชื่อผลิตภัณฑ์', 'violet') + '<input name="name" placeholder="ชื่อผลิตภัณฑ์" /></div>' +
-    '<div class="field">' + fieldLabel('tags', 'ประเภท', 'amber') + searchableSelect('category', categories, 'เลือกประเภทครุภัณฑ์') + '</div>' +
+    '<div class="field">' + fieldLabel('tags', 'หมวดหมู่ครุภัณฑ์', 'amber') + searchableSelect('category', categories, 'เลือกหมวดหมู่ครุภัณฑ์') + '</div>' +
     '<div class="field">' + fieldLabel('calendar-days', 'วันที่ได้รับ', 'blue') + '<input name="received_date" type="date" /></div>' +
     '<div class="field">' + fieldLabel('calendar-range', 'ปีงบประมาณ', 'violet') + '<input name="fiscal_year" type="number" min="2500" max="3000" placeholder="เช่น 2569" /></div>' +
     '<div class="field">' + fieldLabel('map-pin', 'สถานที่', 'mint') + searchableSelect('location', locations, 'เลือกสถานที่') + '</div>' +
@@ -673,9 +673,9 @@ function openAssetModal() {
 }
 async function deleteAsset(id) { if (userRole !== 'super_admin' && supabase) return toast('เฉพาะ Super Admin ลบครุภัณฑ์ได้', true); const target = assets.find(a => String(a.id) === String(id)); if (!target || !confirm(`ยืนยันลบ “${target.name}” (${target.asset_code}) หรือไม่?`)) return; if (supabase && session?.user) { const { error } = await supabase.from('it_assets').delete().eq('id', id); if (error) return toast(`ลบไม่สำเร็จ: ${error.message}`, true); } assets = assets.filter(a => String(a.id) !== String(id)); renderContent(); renderIcons(); toast('ลบรายการแล้ว'); }
 
-function exportCsv() { const headers = ['เลขครุภัณฑ์', 'ชื่อผลิตภัณฑ์', 'ประเภท', 'วันที่ได้รับ', 'ปีงบประมาณ', 'สถานที่', 'หน่วยงาน', 'ชั้น', 'อาคาร', 'ผู้รับผิดชอบ', 'สถานะ', 'ภาพอุปกรณ์', 'ยี่ห้อ / รุ่น', 'หมายเลขเครื่อง', 'ราคา']; const rows = filteredAssets().map(a => [a.asset_code, a.name, a.category, a.received_date || a.purchase_date, a.fiscal_year || thaiFiscalYear(a.received_date || a.purchase_date), a.location, a.department, a.floor, a.building, a.assignee, a.status, a.image_path, a.brand, a.serial_number, a.price]); const csv = '\ufeff' + [headers, ...rows].map(row => row.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n'); const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })), download: `BCN CKR-IT-assets-${new Date().toISOString().slice(0,10)}.csv` }); a.click(); URL.revokeObjectURL(a.href); toast('ส่งออกรายงาน CSV แล้ว'); }
+function exportCsv() { const headers = ['เลขครุภัณฑ์', 'ชื่อผลิตภัณฑ์', 'หมวดหมู่ครุภัณฑ์', 'วันที่ได้รับ', 'ปีงบประมาณ', 'สถานที่', 'หน่วยงาน', 'ชั้น', 'อาคาร', 'ผู้รับผิดชอบ', 'สถานะ', 'ภาพอุปกรณ์', 'ยี่ห้อ / รุ่น', 'หมายเลขเครื่อง', 'ราคา']; const rows = filteredAssets().map(a => [a.asset_code, a.name, a.category, a.received_date || a.purchase_date, a.fiscal_year || thaiFiscalYear(a.received_date || a.purchase_date), a.location, a.department, a.floor, a.building, a.assignee, a.status, a.image_path, a.brand, a.serial_number, a.price]); const csv = '\ufeff' + [headers, ...rows].map(row => row.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n'); const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })), download: `BCN CKR-IT-assets-${new Date().toISOString().slice(0,10)}.csv` }); a.click(); URL.revokeObjectURL(a.href); toast('ส่งออกรายงาน CSV แล้ว'); }
 
-const assetCsvHeaders = ['เลขครุภัณฑ์', 'ชื่อผลิตภัณฑ์', 'ประเภท', 'วันที่ได้รับ', 'ปีงบประมาณ', 'สถานที่', 'หน่วยงาน', 'ชั้น', 'อาคาร', 'ผู้รับผิดชอบ', 'สถานะ', 'ภาพอุปกรณ์', 'ยี่ห้อ / รุ่น', 'หมายเลขเครื่อง', 'ราคา'];
+const assetCsvHeaders = ['เลขครุภัณฑ์', 'ชื่อผลิตภัณฑ์', 'หมวดหมู่ครุภัณฑ์', 'วันที่ได้รับ', 'ปีงบประมาณ', 'สถานที่', 'หน่วยงาน', 'ชั้น', 'อาคาร', 'ผู้รับผิดชอบ', 'สถานะ', 'ภาพอุปกรณ์', 'ยี่ห้อ / รุ่น', 'หมายเลขเครื่อง', 'ราคา'];
 function csvCell(value) { return `"${String(value ?? '').replaceAll('"', '""')}"`; }
 function downloadAssetCsvTemplate() {
   const example = ['7440-001-001/1', 'เครื่องคอมพิวเตอร์ตัวอย่าง', 'คอมพิวเตอร์', '2026-10-01', '2569', 'ห้องปฏิบัติการ', 'งานเทคโนโลยีสารสนเทศ', '2', 'อาคาร 1', 'ชื่อผู้รับผิดชอบ', 'พร้อมใช้งาน', '', 'ยี่ห้อ / รุ่น', 'SERIAL-001', '25000'];
@@ -722,7 +722,7 @@ async function importAssetsCsv(file) {
     const headers = rows[0].map(normalizeCsvHeader);
     const aliases = {
       asset_code: ['เลขครุภัณฑ์', 'รหัสครุภัณฑ์', 'assetcode', 'code'], name: ['ชื่อผลิตภัณฑ์', 'ชื่อครุภัณฑ์', 'ชื่อ', 'name', 'productname'],
-      category: ['ประเภท', 'หมวดหมู่', 'category', 'type'], received_date: ['วันที่ได้รับ', 'วันที่จัดซื้อ', 'receiveddate', 'purchasedate', 'date'],
+      category: ['หมวดหมู่ครุภัณฑ์', 'ประเภท', 'หมวดหมู่', 'category', 'type'], received_date: ['วันที่ได้รับ', 'วันที่จัดซื้อ', 'receiveddate', 'purchasedate', 'date'],
       fiscal_year: ['ปีงบประมาณ', 'fiscalyear'], location: ['สถานที่', 'สถานที่จัดเก็บ', 'location'], department: ['หน่วยงาน', 'department', 'unit'],
       floor: ['ชั้น', 'floor'], building: ['อาคาร', 'building'], assignee: ['ผู้รับผิดชอบ', 'assignee', 'responsible'], status: ['สถานะ', 'status'],
       image_path: ['ภาพอุปกรณ์', 'รูปภาพ', 'imagepath'], brand: ['ยี่ห้อรุ่น', 'ยี่ห้อ', 'รุ่น', 'brand', 'model'], serial_number: ['หมายเลขเครื่อง', 'serialnumber', 'serial'], price: ['ราคา', 'ราคาจัดซื้อ', 'price'], details: ['รายละเอียด', 'เพิ่มเติม', 'details', 'notes']
